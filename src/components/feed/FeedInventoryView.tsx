@@ -69,12 +69,26 @@ export const FeedInventoryView: React.FC = () => {
   const consMaleKg = activeMales > 0 ? Math.round((activeMales * (Number(consMaleGrams) || 0)) / 1000) : 0;
   const consTotalKg = consFemaleKg + consMaleKg;
 
-  const feedGuideItem = farmProfile.standardFeedGuide.find(fg => fg.ageWeek >= (selectedStats?.ageWeeks || 30)) || farmProfile.standardFeedGuide[farmProfile.standardFeedGuide.length - 1];
+  // Find matching feed guide item considering flock breed & age
+  const flockBreed = selectedFlock?.breed || '';
+  const breedGuides = (farmProfile.standardFeedGuide || []).filter(fg => {
+    if (!fg.breedType || fg.breedType === 'All Breeds') return true;
+    if (!flockBreed) return true;
+    return fg.breedType.toLowerCase().includes(flockBreed.toLowerCase()) ||
+           flockBreed.toLowerCase().includes(fg.breedType.toLowerCase());
+  });
+
+  const guideList = breedGuides.length > 0 ? breedGuides : (farmProfile.standardFeedGuide || []);
+  const ageWeeks = selectedStats?.ageWeeks || 30;
+  const feedGuideItem = guideList.find(fg => fg.ageWeek >= ageWeeks) || guideList[guideList.length - 1];
 
   const applyGuideTargets = () => {
     if (!feedGuideItem || !selectedStats) return;
-    setConsFemaleFeedType(feedGuideItem.recommendedFeedType || 'BLC 1');
+    const femaleFt = feedGuideItem.femaleFeedType || feedGuideItem.recommendedFeedType || 'BLC 1';
+    const maleFt = feedGuideItem.maleFeedType || (feedGuideItem.ageWeek >= 20 ? 'BMCC' : (feedGuideItem.recommendedFeedType || 'BMCC'));
+    setConsFemaleFeedType(femaleFt);
     setConsFemaleGrams(feedGuideItem.femaleGramsPerBird || 155);
+    setConsMaleFeedType(maleFt);
     setConsMaleGrams(feedGuideItem.maleGramsPerBird || 125);
   };
 
@@ -627,8 +641,11 @@ export const FeedInventoryView: React.FC = () => {
                     </button>
                   </div>
                   {feedGuideItem && (
-                    <p className="text-[11px] text-teal-800">
-                      Standard Target (Wk {selectedStats.ageWeeks}): {feedGuideItem.femaleGramsPerBird}g / female &bull; {feedGuideItem.maleGramsPerBird || 125}g / male ({feedGuideItem.recommendedFeedType})
+                    <p className="text-[11px] text-teal-800 font-medium">
+                      Standard Target (Wk {selectedStats.ageWeeks}{feedGuideItem.breedType ? ` • ${feedGuideItem.breedType}` : ''}): 
+                      <span className="font-bold text-rose-700 ml-1">♀ {feedGuideItem.femaleGramsPerBird}g ({feedGuideItem.femaleFeedType || feedGuideItem.recommendedFeedType})</span>
+                      <span className="text-slate-400 mx-1.5">•</span>
+                      <span className="font-bold text-teal-800">♂ {feedGuideItem.maleGramsPerBird || 125}g ({feedGuideItem.maleFeedType || (feedGuideItem.ageWeek >= 20 ? 'BMCC' : 'CGC')})</span>
                     </p>
                   )}
                 </div>

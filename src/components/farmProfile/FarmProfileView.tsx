@@ -105,13 +105,17 @@ export const FarmProfileView: React.FC = () => {
   const [newVacMethod, setNewVacMethod] = useState('Drinking Water');
   const [newVacType, setNewVacType] = useState<StandardMedProgramItem['productType']>('Vaccine');
 
-  // Feed Guide Modal
+  // Feed Guide Modal & State
   const [showAddFeedGuide, setShowAddFeedGuide] = useState(false);
+  const [editingFgItem, setEditingFgItem] = useState<StandardFeedGuideItem | null>(null);
+  const [fgBreedFilter, setFgBreedFilter] = useState<string>('All');
+  const [newFgBreed, setNewFgBreed] = useState<string>('Cobb 500');
   const [newFgWeek, setNewFgWeek] = useState(1);
-  const [newFgPhase, setNewFgPhase] = useState('Brooding');
-  const [newFgMale, setNewFgMale] = useState(30);
-  const [newFgFemale, setNewFgFemale] = useState(25);
-  const [newFgType, setNewFgType] = useState<FeedType>('CSC 1');
+  const [newFgPhase, setNewFgPhase] = useState('Brooding / Starter');
+  const [newFgFemaleType, setNewFgFemaleType] = useState<FeedType>('CSC 1');
+  const [newFgFemale, setNewFgFemale] = useState(20);
+  const [newFgMaleType, setNewFgMaleType] = useState<FeedType>('CSC 1');
+  const [newFgMale, setNewFgMale] = useState(22);
 
   // Body weight modal
   const [showAddBw, setShowAddBw] = useState(false);
@@ -193,23 +197,65 @@ export const FarmProfileView: React.FC = () => {
     updateStandardVaccination(updated);
   };
 
-  const handleAddFeedGuide = (e: React.FormEvent) => {
+  const handleOpenAddFeedGuide = () => {
+    setEditingFgItem(null);
+    setNewFgBreed(fgBreedFilter !== 'All' ? fgBreedFilter : 'Cobb 500');
+    setNewFgWeek(1);
+    setNewFgPhase('Brooding / Starter');
+    setNewFgFemaleType('CSC 1');
+    setNewFgFemale(20);
+    setNewFgMaleType('CSC 1');
+    setNewFgMale(22);
+    setShowAddFeedGuide(true);
+  };
+
+  const handleOpenEditFeedGuide = (item: StandardFeedGuideItem) => {
+    setEditingFgItem(item);
+    setNewFgBreed(item.breedType || 'Cobb 500');
+    setNewFgWeek(item.ageWeek);
+    setNewFgPhase(item.productionPhase);
+    setNewFgFemaleType(item.femaleFeedType || item.recommendedFeedType || 'BLC 1');
+    setNewFgFemale(item.femaleGramsPerBird);
+    setNewFgMaleType(item.maleFeedType || (item.ageWeek >= 20 ? 'BMCC' : (item.recommendedFeedType || 'BMCC')));
+    setNewFgMale(item.maleGramsPerBird);
+    setShowAddFeedGuide(true);
+  };
+
+  const handleSaveFeedGuide = (e: React.FormEvent) => {
     e.preventDefault();
-    const newItem: StandardFeedGuideItem = {
-      id: 'fg_' + Date.now(),
+    const itemToSave: StandardFeedGuideItem = {
+      id: editingFgItem ? editingFgItem.id : 'fg_' + Date.now(),
+      breedType: newFgBreed.trim() || 'All Breeds',
       ageWeek: Number(newFgWeek),
-      productionPhase: newFgPhase,
-      maleGramsPerBird: Number(newFgMale),
-      femaleGramsPerBird: Number(newFgFemale),
-      recommendedFeedType: newFgType
+      productionPhase: newFgPhase.trim() || 'Standard Feeding',
+      femaleFeedType: newFgFemaleType,
+      femaleGramsPerBird: Number(newFgFemale) || 0,
+      maleFeedType: newFgMaleType,
+      maleGramsPerBird: Number(newFgMale) || 0,
+      recommendedFeedType: newFgFemaleType
     };
-    const updated = [...farmProfile.standardFeedGuide, newItem].sort((a, b) => a.ageWeek - b.ageWeek);
+
+    let updated: StandardFeedGuideItem[];
+    if (editingFgItem) {
+      updated = (farmProfile.standardFeedGuide || []).map(item => item.id === editingFgItem.id ? itemToSave : item);
+    } else {
+      updated = [...(farmProfile.standardFeedGuide || []), itemToSave];
+    }
+
+    updated.sort((a, b) => {
+      if ((a.breedType || '') === (b.breedType || '')) {
+        return a.ageWeek - b.ageWeek;
+      }
+      return (a.breedType || '').localeCompare(b.breedType || '');
+    });
+
     updateStandardFeedGuide(updated);
     setShowAddFeedGuide(false);
+    setEditingFgItem(null);
   };
 
   const handleDeleteFeedGuide = (id: string) => {
-    const updated = farmProfile.standardFeedGuide.filter(item => item.id !== id);
+    const updated = (farmProfile.standardFeedGuide || []).filter(item => item.id !== id);
     updateStandardFeedGuide(updated);
   };
 
@@ -1218,16 +1264,21 @@ export const FarmProfileView: React.FC = () => {
 
       {/* Tab 3: Standard Feed Guide */}
       {activeTab === 'feed' && (
-        <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs space-y-4">
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs space-y-5">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <h3 className="text-base font-bold text-slate-900">Standard Feed Guide per Age</h3>
-              <p className="text-xs text-slate-500">Grams per bird per day (g/bird/day) recommendation</p>
+              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <Wheat className="w-4 h-4 text-teal-600" />
+                <span>Standard Feed Guide by Breed & Age</span>
+              </h3>
+              <p className="text-xs text-slate-500">
+                Grams per bird per day (g/bird/day) and specific feed type targets for female and male breeder flocks
+              </p>
             </div>
             {permissions.canManageFarmProfile && (
               <button
-                onClick={() => setShowAddFeedGuide(true)}
-                className="px-3.5 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition self-start shadow-xs"
+                onClick={handleOpenAddFeedGuide}
+                className="px-3.5 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition self-start shadow-xs cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>Add Feed Guideline</span>
@@ -1235,119 +1286,330 @@ export const FarmProfileView: React.FC = () => {
             )}
           </div>
 
+          {/* Breed Filter Navigation Bar */}
+          <div className="flex flex-wrap items-center gap-2 p-1.5 bg-slate-100/80 rounded-xl border border-slate-200/70 text-xs">
+            <span className="text-[11px] font-bold text-slate-500 px-2 uppercase tracking-wider">
+              Breed Filter:
+            </span>
+            {['All', 'Cobb 500', 'Ross 308', 'Hubbard', 'Arbor Acres'].map((breed) => {
+              const count = (farmProfile.standardFeedGuide || []).filter(item => {
+                if (breed === 'All') return true;
+                return (item.breedType || 'Cobb 500').toLowerCase().includes(breed.toLowerCase());
+              }).length;
+
+              const isSelected = fgBreedFilter === breed;
+              return (
+                <button
+                  key={breed}
+                  onClick={() => setFgBreedFilter(breed)}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                    isSelected
+                      ? 'bg-teal-700 text-white shadow-xs'
+                      : 'bg-white/80 text-slate-700 hover:bg-white hover:text-slate-900 border border-slate-200/50'
+                  }`}
+                >
+                  <span>{breed === 'All' ? 'All Breeds' : breed}</span>
+                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${
+                    isSelected ? 'bg-teal-800 text-teal-100' : 'bg-slate-200 text-slate-600'
+                  }`}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Add / Edit Feed Guide Modal Form */}
           {showAddFeedGuide && (
-            <form onSubmit={handleAddFeedGuide} className="p-4 bg-teal-50/70 border border-teal-200/80 rounded-2xl space-y-3 animate-fadeIn">
-              <p className="text-xs font-bold text-teal-950">Add Standard Feed Guide Entry</p>
-              <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
+            <form onSubmit={handleSaveFeedGuide} className="p-5 bg-teal-50/70 border border-teal-200/80 rounded-2xl space-y-4 animate-fadeIn">
+              <div className="flex items-center justify-between border-b border-teal-200/60 pb-2.5">
+                <div className="flex items-center gap-2">
+                  <span className="p-1 rounded-lg bg-teal-700 text-white">
+                    {editingFgItem ? <Edit3 className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
+                  </span>
+                  <p className="text-xs font-bold text-teal-950">
+                    {editingFgItem ? 'Edit Standard Feed Guideline' : 'Add Standard Feed Guideline Entry'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setShowAddFeedGuide(false); setEditingFgItem(null); }}
+                  className="text-slate-400 hover:text-slate-700 text-xs font-bold"
+                >
+                  ✕ Close
+                </button>
+              </div>
+
+              {/* Row 1: Breed, Age, and Phase */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">Age (Wks) *</label>
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">Breed Type *</label>
+                  <div className="space-y-1.5">
+                    <select
+                      value={['Cobb 500', 'Ross 308', 'Hubbard', 'Arbor Acres', 'All Breeds'].includes(newFgBreed) ? newFgBreed : 'Other'}
+                      onChange={e => {
+                        if (e.target.value !== 'Other') setNewFgBreed(e.target.value);
+                      }}
+                      className="w-full px-2.5 py-1.5 text-xs font-bold border border-slate-200 rounded-lg bg-white focus:outline-teal-500"
+                    >
+                      <option value="Cobb 500">Cobb 500</option>
+                      <option value="Ross 308">Ross 308</option>
+                      <option value="Hubbard">Hubbard</option>
+                      <option value="Arbor Acres">Arbor Acres</option>
+                      <option value="All Breeds">All Breeds / General</option>
+                      <option value="Other">Custom Breed...</option>
+                    </select>
+                    {(!['Cobb 500', 'Ross 308', 'Hubbard', 'Arbor Acres', 'All Breeds'].includes(newFgBreed)) && (
+                      <input
+                        type="text"
+                        placeholder="Enter breed name"
+                        value={newFgBreed}
+                        onChange={e => setNewFgBreed(e.target.value)}
+                        className="w-full px-2.5 py-1.5 text-xs border border-teal-300 rounded-lg bg-white focus:outline-teal-500"
+                      />
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">Age in Weeks *</label>
                   <input
                     type="number"
                     min="1"
-                    max="70"
+                    max="80"
                     required
                     value={newFgWeek}
                     onChange={e => setNewFgWeek(Number(e.target.value))}
-                    className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg bg-white focus:outline-teal-500 outline-hidden"
+                    className="w-full px-2.5 py-1.5 text-xs font-bold border border-slate-200 rounded-lg bg-white focus:outline-teal-500"
                   />
                 </div>
+
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">Phase</label>
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">Production Phase *</label>
                   <input
                     type="text"
                     required
+                    placeholder="e.g. Peak Production, Pre-Lay, Growing"
                     value={newFgPhase}
                     onChange={e => setNewFgPhase(e.target.value)}
-                    className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg bg-white focus:outline-teal-500 outline-hidden"
+                    className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg bg-white focus:outline-teal-500"
                   />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">Male (g/bird/day) *</label>
-                  <input
-                    type="number"
-                    required
-                    value={newFgMale}
-                    onChange={e => setNewFgMale(Number(e.target.value))}
-                    className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg bg-white focus:outline-teal-500 outline-hidden"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">Female (g/bird/day) *</label>
-                  <input
-                    type="number"
-                    required
-                    value={newFgFemale}
-                    onChange={e => setNewFgFemale(Number(e.target.value))}
-                    className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg bg-white focus:outline-teal-500 outline-hidden"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">Feed Type *</label>
-                  <select
-                    value={newFgType}
-                    onChange={e => setNewFgType(e.target.value as FeedType)}
-                    className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg bg-white focus:outline-teal-500 outline-hidden"
-                  >
-                    {['CSC 1', 'CSC 2', 'CGC', 'PDC', 'BLC 1', 'BLC 2', 'BLC 3', 'BMCC', 'BMCR'].map(ft => (
-                      <option key={ft} value={ft}>{ft}</option>
-                    ))}
-                  </select>
                 </div>
               </div>
-              <div className="flex justify-end gap-2">
+
+              {/* Row 2: Split Female & Male Feed Guides */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Female Feeding Specification Card */}
+                <div className="p-3.5 bg-rose-50/70 border border-rose-200 rounded-xl space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-rose-950 flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-rose-500"></span>
+                      Female Feeding Standard (♀)
+                    </span>
+                    <span className="text-[10px] font-bold text-rose-700 bg-rose-100 px-2 py-0.5 rounded-md">
+                      Hen Ration
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">Female Feed Type *</label>
+                      <select
+                        value={newFgFemaleType}
+                        onChange={e => setNewFgFemaleType(e.target.value as FeedType)}
+                        className="w-full px-2.5 py-1.5 text-xs font-bold border border-rose-200 rounded-lg bg-white focus:outline-rose-500 text-rose-950"
+                      >
+                        {['CSC 1', 'CSC 2', 'CGC', 'PDC', 'BLC 1', 'BLC 2', 'BLC 3', 'BMCC', 'BMCR', 'CBB'].map(ft => (
+                          <option key={ft} value={ft}>{ft}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">Female Daily Intake *</label>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          step="0.5"
+                          min="0"
+                          required
+                          value={newFgFemale}
+                          onChange={e => setNewFgFemale(Number(e.target.value))}
+                          className="w-full px-2.5 py-1.5 text-xs font-bold border border-rose-200 rounded-lg bg-white focus:outline-rose-500 text-rose-950 pr-14"
+                        />
+                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-rose-600">
+                          g/bird
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Male Feeding Specification Card */}
+                <div className="p-3.5 bg-teal-50/70 border border-teal-200 rounded-xl space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-teal-950 flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-teal-500"></span>
+                      Male Feeding Standard (♂)
+                    </span>
+                    <span className="text-[10px] font-bold text-teal-700 bg-teal-100 px-2 py-0.5 rounded-md">
+                      Rooster Ration
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">Male Feed Type *</label>
+                      <select
+                        value={newFgMaleType}
+                        onChange={e => setNewFgMaleType(e.target.value as FeedType)}
+                        className="w-full px-2.5 py-1.5 text-xs font-bold border border-teal-200 rounded-lg bg-white focus:outline-teal-500 text-teal-950"
+                      >
+                        {['BMCC', 'BMCR', 'CSC 1', 'CSC 2', 'CGC', 'PDC', 'BLC 1', 'BLC 2', 'BLC 3', 'CBB'].map(ft => (
+                          <option key={ft} value={ft}>{ft}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">Male Daily Intake *</label>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          step="0.5"
+                          min="0"
+                          required
+                          value={newFgMale}
+                          onChange={e => setNewFgMale(Number(e.target.value))}
+                          className="w-full px-2.5 py-1.5 text-xs font-bold border border-teal-200 rounded-lg bg-white focus:outline-teal-500 text-teal-950 pr-14"
+                        />
+                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-teal-600">
+                          g/bird
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex justify-end gap-2 pt-1 border-t border-teal-200/50">
                 <button
                   type="button"
-                  onClick={() => setShowAddFeedGuide(false)}
-                  className="px-3 py-1 bg-white border border-slate-200 text-slate-700 text-xs rounded-lg font-medium"
+                  onClick={() => { setShowAddFeedGuide(false); setEditingFgItem(null); }}
+                  className="px-3.5 py-1.5 bg-white border border-slate-200 text-slate-700 text-xs rounded-xl font-medium cursor-pointer hover:bg-slate-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-3 py-1 bg-teal-600 text-white text-xs rounded-lg font-semibold hover:bg-teal-700 shadow-xs"
+                  className="px-4 py-1.5 bg-teal-600 text-white text-xs rounded-xl font-bold hover:bg-teal-700 shadow-xs cursor-pointer transition flex items-center gap-1.5"
                 >
-                  Add Guideline
+                  <Save className="w-3.5 h-3.5" />
+                  <span>{editingFgItem ? 'Update Guideline' : 'Save Guideline'}</span>
                 </button>
               </div>
             </form>
           )}
 
-          <div className="overflow-x-auto">
+          {/* Guidelines Table */}
+          <div className="overflow-x-auto rounded-xl border border-slate-200/80">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200/80">
                   <th className="py-2.5 px-3">Age (Wks)</th>
-                  <th className="py-2.5 px-3">Phase</th>
-                  <th className="py-2.5 px-3">Feed Type</th>
-                  <th className="py-2.5 px-3">Male Intake (g/bird)</th>
-                  <th className="py-2.5 px-3">Female Intake (g/bird)</th>
-                  {permissions.canDeleteRecord && <th className="py-2.5 px-3 text-right">Actions</th>}
+                  <th className="py-2.5 px-3">Breed Type</th>
+                  <th className="py-2.5 px-3">Production Phase</th>
+                  <th className="py-2.5 px-3">
+                    <span className="flex items-center gap-1 text-rose-800">
+                      <span className="w-2 h-2 rounded-full bg-rose-500"></span>
+                      Female Guide (Feed Type • Intake)
+                    </span>
+                  </th>
+                  <th className="py-2.5 px-3">
+                    <span className="flex items-center gap-1 text-teal-800">
+                      <span className="w-2 h-2 rounded-full bg-teal-500"></span>
+                      Male Guide (Feed Type • Intake)
+                    </span>
+                  </th>
+                  {permissions.canManageFarmProfile && <th className="py-2.5 px-3 text-right">Actions</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {(farmProfile.standardFeedGuide || []).map((item) => (
-                  <tr key={item.id} className="hover:bg-slate-50/80 transition">
-                    <td className="py-2.5 px-3 font-bold text-slate-800">Week {item.ageWeek}</td>
-                    <td className="py-2.5 px-3 font-medium text-slate-700">{item.productionPhase}</td>
-                    <td className="py-2.5 px-3">
-                      <span className="px-2 py-0.5 rounded bg-teal-100 text-teal-800 font-bold">
-                        {item.recommendedFeedType}
-                      </span>
-                    </td>
-                    <td className="py-2.5 px-3 font-semibold text-slate-900">{item.maleGramsPerBird} g</td>
-                    <td className="py-2.5 px-3 font-semibold text-slate-900">{item.femaleGramsPerBird} g</td>
-                    {permissions.canDeleteRecord && (
-                      <td className="py-2.5 px-3 text-right">
-                        <button
-                          onClick={() => handleDeleteFeedGuide(item.id)}
-                          className="p-1 text-slate-400 hover:text-rose-600 rounded transition"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </td>
-                    )}
-                  </tr>
-                ))}
+                {(farmProfile.standardFeedGuide || [])
+                  .filter(item => {
+                    if (fgBreedFilter === 'All') return true;
+                    return (item.breedType || 'Cobb 500').toLowerCase().includes(fgBreedFilter.toLowerCase());
+                  })
+                  .map((item) => {
+                    const itemBreed = item.breedType || 'Cobb 500';
+                    const isCobb = itemBreed.toLowerCase().includes('cobb');
+                    const isRoss = itemBreed.toLowerCase().includes('ross');
+                    const femaleType = item.femaleFeedType || item.recommendedFeedType || 'BLC 1';
+                    const maleType = item.maleFeedType || (item.ageWeek >= 20 ? 'BMCC' : (item.recommendedFeedType || 'BMCC'));
+
+                    return (
+                      <tr key={item.id} className="hover:bg-slate-50/80 transition">
+                        <td className="py-2.5 px-3 font-bold text-slate-900 whitespace-nowrap">
+                          Week {item.ageWeek}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold border ${
+                            isCobb
+                              ? 'bg-sky-50 text-sky-800 border-sky-200'
+                              : isRoss
+                              ? 'bg-purple-50 text-purple-800 border-purple-200'
+                              : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                          }`}>
+                            {itemBreed}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 font-medium text-slate-700">
+                          {item.productionPhase}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <div className="flex items-center gap-1.5">
+                            <span className="px-2 py-0.5 rounded-md bg-rose-50 text-rose-800 border border-rose-200 font-bold text-[11px]">
+                              {femaleType}
+                            </span>
+                            <span className="font-bold text-slate-900">
+                              {item.femaleGramsPerBird} g/bird
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <div className="flex items-center gap-1.5">
+                            <span className="px-2 py-0.5 rounded-md bg-teal-50 text-teal-800 border border-teal-200 font-bold text-[11px]">
+                              {maleType}
+                            </span>
+                            <span className="font-bold text-slate-900">
+                              {item.maleGramsPerBird} g/bird
+                            </span>
+                          </div>
+                        </td>
+                        {permissions.canManageFarmProfile && (
+                          <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                onClick={() => handleOpenEditFeedGuide(item)}
+                                className="p-1 text-slate-400 hover:text-teal-600 rounded transition cursor-pointer"
+                                title="Edit guideline"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                              </button>
+                              {permissions.canDeleteRecord && (
+                                <button
+                                  onClick={() => handleDeleteFeedGuide(item.id)}
+                                  className="p-1 text-slate-400 hover:text-rose-600 rounded transition cursor-pointer"
+                                  title="Delete guideline"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
               </tbody>
             </table>
           </div>

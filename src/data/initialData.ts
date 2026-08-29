@@ -50,16 +50,29 @@ export const INITIAL_FARM_PROFILE: FarmProfile = {
     { id: 'v10', ageWeek: 48, ageDays: 336, productName: 'ND + IB Live Booster', productType: 'Vaccine', diseaseTarget: 'ND + IB', method: 'Drinking Water', mandatory: false, notes: 'Late production immunity maintenance' }
   ],
   standardFeedGuide: [
-    { id: 'fg1', ageWeek: 1, productionPhase: 'Brooding', maleGramsPerBird: 22, femaleGramsPerBird: 20, recommendedFeedType: 'CSC 1' },
-    { id: 'fg2', ageWeek: 3, productionPhase: 'Brooding / Starter', maleGramsPerBird: 38, femaleGramsPerBird: 35, recommendedFeedType: 'CSC 2' },
-    { id: 'fg3', ageWeek: 8, productionPhase: 'Growing', maleGramsPerBird: 65, femaleGramsPerBird: 58, recommendedFeedType: 'CGC' },
-    { id: 'fg4', ageWeek: 14, productionPhase: 'Developing', maleGramsPerBird: 85, femaleGramsPerBird: 75, recommendedFeedType: 'PDC' },
-    { id: 'fg5', ageWeek: 20, productionPhase: 'Pre-Lay', maleGramsPerBird: 105, femaleGramsPerBird: 95, recommendedFeedType: 'BLC 1' },
-    { id: 'fg6', ageWeek: 24, productionPhase: 'Onset of Lay (5%)', maleGramsPerBird: 115, femaleGramsPerBird: 120, recommendedFeedType: 'BLC 1' },
-    { id: 'fg7', ageWeek: 28, productionPhase: 'Peak Production', maleGramsPerBird: 125, femaleGramsPerBird: 160, recommendedFeedType: 'BLC 1' },
-    { id: 'fg8', ageWeek: 32, productionPhase: 'Peak to Post-Peak', maleGramsPerBird: 128, femaleGramsPerBird: 162, recommendedFeedType: 'BLC 2' },
-    { id: 'fg9', ageWeek: 45, productionPhase: 'Mid-Lay Phase', maleGramsPerBird: 130, femaleGramsPerBird: 158, recommendedFeedType: 'BLC 2' },
-    { id: 'fg10', ageWeek: 55, productionPhase: 'Late Lay Phase', maleGramsPerBird: 130, femaleGramsPerBird: 154, recommendedFeedType: 'BLC 3' }
+    // Cobb 500 Feeding Standards
+    { id: 'fg_cobb_1', breedType: 'Cobb 500', ageWeek: 1, productionPhase: 'Brooding / Starter', femaleFeedType: 'CSC 1', femaleGramsPerBird: 20, maleFeedType: 'CSC 1', maleGramsPerBird: 22, recommendedFeedType: 'CSC 1' },
+    { id: 'fg_cobb_2', breedType: 'Cobb 500', ageWeek: 3, productionPhase: 'Starter Phase 2', femaleFeedType: 'CSC 2', femaleGramsPerBird: 35, maleFeedType: 'CSC 2', maleGramsPerBird: 38, recommendedFeedType: 'CSC 2' },
+    { id: 'fg_cobb_3', breedType: 'Cobb 500', ageWeek: 8, productionPhase: 'Growing Phase', femaleFeedType: 'CGC', femaleGramsPerBird: 58, maleFeedType: 'CGC', maleGramsPerBird: 65, recommendedFeedType: 'CGC' },
+    { id: 'fg_cobb_4', breedType: 'Cobb 500', ageWeek: 14, productionPhase: 'Developing Phase', femaleFeedType: 'PDC', femaleGramsPerBird: 75, maleFeedType: 'PDC', maleGramsPerBird: 85, recommendedFeedType: 'PDC' },
+    { id: 'fg_cobb_5', breedType: 'Cobb 500', ageWeek: 20, productionPhase: 'Pre-Lay Preparation', femaleFeedType: 'BLC 1', femaleGramsPerBird: 95, maleFeedType: 'BMCC', maleGramsPerBird: 105, recommendedFeedType: 'BLC 1' },
+    { id: 'fg_cobb_6', breedType: 'Cobb 500', ageWeek: 24, productionPhase: 'Onset of Lay (5% HD)', femaleFeedType: 'BLC 1', femaleGramsPerBird: 120, maleFeedType: 'BMCC', maleGramsPerBird: 115, recommendedFeedType: 'BLC 1' },
+    { id: 'fg_cobb_7', breedType: 'Cobb 500', ageWeek: 28, productionPhase: 'Peak Production', femaleFeedType: 'BLC 1', femaleGramsPerBird: 160, maleFeedType: 'BMCC', maleGramsPerBird: 125, recommendedFeedType: 'BLC 1' },
+    { id: 'fg_cobb_8', breedType: 'Cobb 500', ageWeek: 32, productionPhase: 'Peak to Post-Peak', femaleFeedType: 'BLC 2', femaleGramsPerBird: 162, maleFeedType: 'BMCC', maleGramsPerBird: 128, recommendedFeedType: 'BLC 2' },
+    { id: 'fg_cobb_9', breedType: 'Cobb 500', ageWeek: 45, productionPhase: 'Mid-Lay Phase', femaleFeedType: 'BLC 2', femaleGramsPerBird: 158, maleFeedType: 'BMCR', maleGramsPerBird: 130, recommendedFeedType: 'BLC 2' },
+    { id: 'fg_cobb_10', breedType: 'Cobb 500', ageWeek: 55, productionPhase: 'Late Lay Phase', femaleFeedType: 'BLC 3', femaleGramsPerBird: 154, maleFeedType: 'BMCR', maleGramsPerBird: 130, recommendedFeedType: 'BLC 3' },
+    
+    // Ross 308 Feeding Standards
+    { id: 'fg_ross_1', breedType: 'Ross 308', ageWeek: 1, productionPhase: 'Brooding / Starter', femaleFeedType: 'CSC 1', femaleGramsPerBird: 21, maleFeedType: 'CSC 1', maleGramsPerBird: 23, recommendedFeedType: 'CSC 1' },
+    { id: 'fg_ross_2', breedType: 'Ross 308', ageWeek: 3, productionPhase: 'Starter Phase 2', femaleFeedType: 'CSC 2', femaleGramsPerBird: 36, maleFeedType: 'CSC 2', maleGramsPerBird: 39, recommendedFeedType: 'CSC 2' },
+    { id: 'fg_ross_3', breedType: 'Ross 308', ageWeek: 8, productionPhase: 'Growing Phase', femaleFeedType: 'CGC', femaleGramsPerBird: 60, maleFeedType: 'CGC', maleGramsPerBird: 67, recommendedFeedType: 'CGC' },
+    { id: 'fg_ross_4', breedType: 'Ross 308', ageWeek: 14, productionPhase: 'Developing Phase', femaleFeedType: 'PDC', femaleGramsPerBird: 78, maleFeedType: 'PDC', maleGramsPerBird: 88, recommendedFeedType: 'PDC' },
+    { id: 'fg_ross_5', breedType: 'Ross 308', ageWeek: 20, productionPhase: 'Pre-Lay Preparation', femaleFeedType: 'BLC 1', femaleGramsPerBird: 98, maleFeedType: 'BMCC', maleGramsPerBird: 108, recommendedFeedType: 'BLC 1' },
+    { id: 'fg_ross_6', breedType: 'Ross 308', ageWeek: 24, productionPhase: 'Onset of Lay (5% HD)', femaleFeedType: 'BLC 1', femaleGramsPerBird: 122, maleFeedType: 'BMCC', maleGramsPerBird: 118, recommendedFeedType: 'BLC 1' },
+    { id: 'fg_ross_7', breedType: 'Ross 308', ageWeek: 28, productionPhase: 'Peak Production', femaleFeedType: 'BLC 1', femaleGramsPerBird: 164, maleFeedType: 'BMCC', maleGramsPerBird: 126, recommendedFeedType: 'BLC 1' },
+    { id: 'fg_ross_8', breedType: 'Ross 308', ageWeek: 32, productionPhase: 'Peak to Post-Peak', femaleFeedType: 'BLC 2', femaleGramsPerBird: 165, maleFeedType: 'BMCC', maleGramsPerBird: 130, recommendedFeedType: 'BLC 2' },
+    { id: 'fg_ross_9', breedType: 'Ross 308', ageWeek: 45, productionPhase: 'Mid-Lay Phase', femaleFeedType: 'BLC 2', femaleGramsPerBird: 160, maleFeedType: 'BMCR', maleGramsPerBird: 132, recommendedFeedType: 'BLC 2' },
+    { id: 'fg_ross_10', breedType: 'Ross 308', ageWeek: 55, productionPhase: 'Late Lay Phase', femaleFeedType: 'BLC 3', femaleGramsPerBird: 156, maleFeedType: 'BMCR', maleGramsPerBird: 132, recommendedFeedType: 'BLC 3' }
   ],
   standardHenday: [
     { id: 'hd1', ageWeek: 24, ageInProduction: 1, standardHendayPct: 5.0, standardHatchingPct: 60.0 },

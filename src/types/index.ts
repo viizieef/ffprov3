@@ -39,7 +39,7 @@ export interface UserAccount {
 
 export type User = UserAccount;
 
-export type BreedType = 'Ross' | 'Cobb' | 'Ross 308' | 'Cobb 500';
+export type BreedType = 'Ross' | 'Cobb' | 'Ross 308' | 'Cobb 500' | 'Hubbard' | 'Arbor Acres' | 'All Breeds' | string;
 
 export interface PenConfig {
   id: string;
@@ -226,11 +226,14 @@ export interface StandardMedProgramItem {
 
 export interface StandardFeedGuideItem {
   id: string;
+  breedType?: string; // e.g. 'Cobb 500' | 'Ross 308' | 'Hubbard' | 'Arbor Acres' | 'All Breeds'
   ageWeek: number;
   productionPhase: string;
-  maleGramsPerBird: number;
+  femaleFeedType?: FeedType; // Feed type for female birds
   femaleGramsPerBird: number;
-  recommendedFeedType: FeedType;
+  maleFeedType?: FeedType; // Feed type for male birds
+  maleGramsPerBird: number;
+  recommendedFeedType?: FeedType; // Standard / general feed type
 }
 
 export interface StandardHendayItem {
