@@ -1,0 +1,132 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Outfit', 'Plus Jakarta Sans', sans-serif;
+
+  /* Primary Forest & Pine Palette centered on #013220 (950), #0B634F (800), #50C878 (400), #D1F2EB (100) */
+  --color-forest-950: #012517;
+  --color-forest-900: #033926;
+  --color-forest-800: #0B634F;
+  --color-forest-700: #0e7860;
+  --color-forest-600: #129377;
+  --color-forest-500: #29b18f;
+  --color-forest-400: #50C878;
+  --color-forest-300: #7ee09f;
+  --color-forest-200: #a7edcc;
+  --color-forest-100: #D1F2EB;
+  --color-forest-50: #edf9f6;
+
+  /* Accent Mint & Emerald Palette */
+  --color-mint-950: #012517;
+  --color-mint-900: #033926;
+  --color-mint-800: #0B634F;
+  --color-mint-700: #0e7860;
+  --color-mint-600: #1aa682;
+  --color-mint-500: #38ba7b;
+  --color-mint-400: #50C878;
+  --color-mint-300: #7ee09f;
+  --color-mint-200: #a7edcc;
+  --color-mint-100: #D1F2EB;
+  --color-mint-50: #edf9f6;
+
+  /* Refined Cool Slate & Neutral Scale with Subtle Pine Undertone */
+  --color-graphite-950: #021a12;
+  --color-graphite-900: #09261c;
+  --color-graphite-800: #113629;
+  --color-graphite-700: #1f4738;
+  --color-graphite-600: #335d4d;
+  --color-graphite-500: #527a6c;
+  --color-graphite-400: #7c9f92;
+  --color-graphite-300: #abc6bc;
+  --color-graphite-200: #d6e6df;
+  --color-graphite-100: #ebf4ef;
+  --color-graphite-50: #f6faf8;
+
+  /* Explicit Palette Direct Tokens */
+  --color-palette-softmint: #D1F2EB;
+  --color-palette-emerald: #50C878;
+  --color-palette-pine: #0B634F;
+  --color-palette-darkforest: #012517;
+}
+
+/* Base polish and modern font smoothing */
+html {
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-size-adjust: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  overscroll-behavior-y: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+/* Custom modern scrollbars for PC Desktop (Windows, macOS, Linux) */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(11, 99, 79, 0.25);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(11, 99, 79, 0.5);
+}
+
+/* Standalone PWA and window controls overlay support */
+@media all and (display-mode: standalone) {
+  body {
+    user-select: none;
+  }
+  input, textarea, [contenteditable="true"] {
+    user-select: text;
+  }
+}
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm 12mm 15mm 12mm;
+  }
+
+  body {
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Hide app navigation chrome during print */
+  nav, header, aside, .print\:hidden {
+    display: none !important;
+  }
+
+  /* Keep table rows together */
+  tr {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  /* Show print elements */
+  .print\:block {
+    display: block !important;
+  }
+
+  .print\:flex {
+    display: flex !important;
+  }
+}
+
+

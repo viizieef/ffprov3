@@ -1,0 +1,67 @@
+{
+  "id": "farmflow-pro-poultry-os",
+  "name": "FarmFlow Pro - Broiler-Breeder Farm Management",
+  "short_name": "FarmFlow Pro",
+  "description": "Biosecure broiler-breeder poultry farm management system with offline capability, egg collection, feed tracking, mortality logs, and multi-device sync.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "orientation": "any",
+  "theme_color": "#012517",
+  "background_color": "#012517",
+  "lang": "en",
+  "dir": "ltr",
+  "prefer_related_applications": false,
+  "categories": ["business", "productivity", "utilities", "agriculture"],
+  "icons": [
+    {
+      "src": "/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Egg Production",
+      "short_name": "Egg Log",
+      "description": "Record daily egg collections and lay rate",
+      "url": "/#egg_production",
+      "icons": [{ "src": "/icon-192.svg", "sizes": "192x192" }]
+    },
+    {
+      "name": "Flockman Module",
+      "short_name": "Flockman",
+      "description": "House operations checklist and logs",
+      "url": "/#flockman_module",
+      "icons": [{ "src": "/icon-192.svg", "sizes": "192x192" }]
+    },
+    {
+      "name": "Feed Inventory",
+      "short_name": "Feed",
+      "description": "Manage feed deliveries and consumption",
+      "url": "/#feed_inventory",
+      "icons": [{ "src": "/icon-192.svg", "sizes": "192x192" }]
+    },
+    {
+      "name": "Dynamic Reports",
+      "short_name": "Reports",
+      "description": "View and export poultry analytics reports",
+      "url": "/#reports",
+      "icons": [{ "src": "/icon-192.svg", "sizes": "192x192" }]
+    }
+  ]
+}

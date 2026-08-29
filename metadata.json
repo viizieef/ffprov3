@@ -1,0 +1,6 @@
+{
+  "name": "FarmFlow Pro",
+  "description": "Comprehensive poultry broiler-breeder farm management system featuring flock tracking, egg production logging, ESRRR egg delivery & regrading reports, messenger reports, feed inventory, mortality, vaccination schedules, and role-based access control.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
