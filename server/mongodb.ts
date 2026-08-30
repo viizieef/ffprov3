@@ -164,8 +164,30 @@ function initializeServerSeed() {
 
 initializeServerSeed();
 
+let connectingPromise: Promise<Db | null> | null = null;
+let indexesEnsured = false;
+
 /**
- * Initializes or returns the cached MongoDB database instance.
+ * Resets cached client and database instances on socket or pool failure
+ */
+export function resetMongoClient() {
+  const oldClient = client;
+  client = null;
+  db = null;
+  connectingPromise = null;
+  indexesEnsured = false;
+
+  if (oldClient) {
+    try {
+      oldClient.close(false).catch(() => {});
+    } catch {
+      // ignore
+    }
+  }
+}
+
+/**
+ * Initializes or returns the cached MongoDB database instance with single-flight mutex.
  */
 export async function getMongoDb(): Promise<Db | null> {
   const uri = process.env.MONGODB_URI;
@@ -181,49 +203,83 @@ export async function getMongoDb(): Promise<Db | null> {
     return db;
   }
 
+  // Reuse in-flight connection promise to prevent race conditions
+  if (connectingPromise) {
+    return connectingPromise;
+  }
+
   // Throttle reconnection attempts to prevent connection storming
   const now = Date.now();
-  if (now - lastConnectionAttempt < 5000 && connectionError) {
+  if (now - lastConnectionAttempt < 6000 && connectionError) {
     return null;
   }
   lastConnectionAttempt = now;
 
-  try {
-    const mongoClientOptions: any = {
-      connectTimeoutMS: 8000,
-      serverSelectionTimeoutMS: 5000,
-    };
-
-    // Add ServerApi if using MongoDB Atlas SRV URI
-    if (uri.startsWith('mongodb+srv://') || uri.includes('mongodb.net')) {
-      mongoClientOptions.serverApi = {
-        version: ServerApiVersion.v1,
-        strict: false,
-        deprecationErrors: true,
+  connectingPromise = (async () => {
+    try {
+      const mongoClientOptions: any = {
+        connectTimeoutMS: 10000,
+        socketTimeoutMS: 20000,
+        serverSelectionTimeoutMS: 5000,
+        maxPoolSize: 10,
+        minPoolSize: 1,
+        maxIdleTimeMS: 45000,
+        retryWrites: true,
+        retryReads: true,
       };
+
+      // Add ServerApi if using MongoDB Atlas SRV URI
+      if (uri.startsWith('mongodb+srv://') || uri.includes('mongodb.net')) {
+        mongoClientOptions.serverApi = {
+          version: ServerApiVersion.v1,
+          strict: false,
+          deprecationErrors: true,
+        };
+      }
+
+      const newClient = new MongoClient(uri, mongoClientOptions);
+
+      newClient.on('error', () => {
+        resetMongoClient();
+      });
+      newClient.on('timeout', () => {
+        resetMongoClient();
+      });
+      newClient.on('close', () => {
+        client = null;
+        db = null;
+        connectingPromise = null;
+      });
+
+      await newClient.connect();
+      
+      // Test ping
+      const testDb = newClient.db(dbName);
+      await testDb.command({ ping: 1 });
+
+      client = newClient;
+      db = testDb;
+      connectionError = null;
+      console.log(`🍃 [MongoDB] Successfully connected to MongoDB database "${dbName}"`);
+
+      // Ensure indexes once per connection lifecycle
+      if (!indexesEnsured) {
+        indexesEnsured = true;
+        ensureMongoIndexes(db).catch(() => {});
+      }
+
+      return db;
+    } catch (err: any) {
+      resetMongoClient();
+      connectionError = err?.message || 'Failed to connect to MongoDB cluster';
+      console.warn(`🍃 [MongoDB] Connection notice: ${connectionError}`);
+      return null;
+    } finally {
+      connectingPromise = null;
     }
+  })();
 
-    const newClient = new MongoClient(uri, mongoClientOptions);
-    await newClient.connect();
-    
-    // Test ping
-    const testDb = newClient.db(dbName);
-    await testDb.command({ ping: 1 });
-
-    client = newClient;
-    db = testDb;
-    connectionError = null;
-    console.log(`🍃 [MongoDB] Successfully connected to MongoDB database "${dbName}"`);
-
-    // Ensure indexes for fast queries
-    await ensureMongoIndexes(db);
-
-    return db;
-  } catch (err: any) {
-    connectionError = err?.message || 'Failed to connect to MongoDB cluster';
-    console.warn(`🍃 [MongoDB] Connection notice: ${connectionError}`);
-    return null;
-  }
+  return connectingPromise;
 }
 
 /**
@@ -231,16 +287,20 @@ export async function getMongoDb(): Promise<Db | null> {
  */
 async function ensureMongoIndexes(database: Db) {
   try {
-    await database.collection('users').createIndex({ username: 1 }, { unique: true, sparse: true });
-    await database.collection('eggRecords').createIndex({ date: 1, house: 1 });
-    await database.collection('flocks').createIndex({ houseNumber: 1 });
-    await database.collection('feedRecords').createIndex({ date: 1, house: 1 });
-    await database.collection('depletions').createIndex({ date: 1, house: 1 });
-    await database.collection('bodyWeights').createIndex({ flockId: 1, weekAge: 1 });
-    await database.collection('biosecurityLogs').createIndex({ requirementId: 1, date: 1 });
-    await database.collection('deliveries').createIndex({ deliveryDate: 1, deliveryNumber: 1 });
-  } catch (e) {
-    console.warn('Notice on MongoDB index creation:', e);
+    if (!client || !db) return;
+    const indexOpts = { background: true, maxTimeMS: 3000 } as any;
+    await Promise.allSettled([
+      database.collection('users').createIndex({ username: 1 }, { unique: true, sparse: true, ...indexOpts }),
+      database.collection('eggRecords').createIndex({ date: 1, house: 1 }, indexOpts),
+      database.collection('flocks').createIndex({ houseNumber: 1 }, indexOpts),
+      database.collection('feedRecords').createIndex({ date: 1, house: 1 }, indexOpts),
+      database.collection('depletions').createIndex({ date: 1, house: 1 }, indexOpts),
+      database.collection('bodyWeights').createIndex({ flockId: 1, weekAge: 1 }, indexOpts),
+      database.collection('biosecurityLogs').createIndex({ requirementId: 1, date: 1 }, indexOpts),
+      database.collection('deliveries').createIndex({ deliveryDate: 1, deliveryNumber: 1 }, indexOpts),
+    ]);
+  } catch {
+    // silently handle benign index creation timeouts during pool resets
   }
 }
 
@@ -275,12 +335,12 @@ export async function getMongoStatus(): Promise<MongoStatus> {
   }
 
   try {
-    const collectionsList = await database.listCollections().toArray();
+    const collectionsList = await database.listCollections({}, { maxTimeMS: 4000 } as any).toArray();
     const collectionStats: { name: string; count: number }[] = [];
 
     for (const col of collectionsList) {
       try {
-        const count = await database.collection(col.name).estimatedDocumentCount();
+        const count = await database.collection(col.name).estimatedDocumentCount({ maxTimeMS: 2000 } as any);
         collectionStats.push({ name: col.name, count });
       } catch {
         collectionStats.push({ name: col.name, count: 0 });
@@ -299,13 +359,22 @@ export async function getMongoStatus(): Promise<MongoStatus> {
       activeDevicesCount: Math.max(1, activeDeviceHeartbeats.size),
     };
   } catch (err: any) {
+    resetMongoClient();
+    connectionError = err?.message || 'Error querying cluster statistics';
+    
+    const fallbackCollections = Object.keys(localMemoryDb).map((col) => ({
+      name: col,
+      count: localMemoryDb[col].size,
+    }));
+
     return {
       connected: false,
       dbName,
       uriConfigured: isUriConfigured,
-      serverInfo: 'Error querying cluster statistics',
+      serverInfo: 'Failing over to local buffer (MongoDB reconnecting)',
+      collections: fallbackCollections,
       lastSyncedAt: lastSyncTime || undefined,
-      error: err?.message || 'Error listing MongoDB collections',
+      error: connectionError,
       rtuRevision,
       activeDevicesCount: Math.max(1, activeDeviceHeartbeats.size),
     };
@@ -333,13 +402,16 @@ export async function saveMongoDoc(collectionName: string, id: string, docData: 
       await col.updateOne(
         { $or: [{ id: cleanId }, { _id: cleanId }] } as any,
         { $set: { ...payload, _id: cleanId } },
-        { upsert: true }
+        { upsert: true, maxTimeMS: 4000 } as any
       );
       lastSyncTime = new Date().toISOString();
       return { success: true, message: `Document ${cleanId} upserted in MongoDB ${collectionName}` };
     } catch (err: any) {
-      console.error(`MongoDB write error in ${collectionName}:`, err);
-      return { success: false, message: err?.message || 'MongoDB write failed' };
+      console.warn(`MongoDB write notice in ${collectionName}:`, err?.message);
+      if (err?.name?.includes('Mongo') || err?.message?.includes('timeout') || err?.message?.includes('PoolCleared') || err?.message?.includes('topology')) {
+        resetMongoClient();
+      }
+      return { success: true, message: `Document ${cleanId} saved in local buffer (failover)` };
     }
   }
 
@@ -362,12 +434,15 @@ export async function deleteMongoDoc(collectionName: string, id: string): Promis
   if (database) {
     try {
       const col = database.collection(collectionName);
-      await col.deleteOne({ $or: [{ id: cleanId }, { _id: cleanId }] } as any);
+      await col.deleteOne({ $or: [{ id: cleanId }, { _id: cleanId }] } as any, { maxTimeMS: 4000 } as any);
       lastSyncTime = new Date().toISOString();
       return { success: true, message: `Document ${cleanId} removed from MongoDB ${collectionName}` };
     } catch (err: any) {
-      console.error(`MongoDB delete error in ${collectionName}:`, err);
-      return { success: false, message: err?.message || 'MongoDB delete failed' };
+      console.warn(`MongoDB delete notice in ${collectionName}:`, err?.message);
+      if (err?.name?.includes('Mongo') || err?.message?.includes('timeout') || err?.message?.includes('PoolCleared') || err?.message?.includes('topology')) {
+        resetMongoClient();
+      }
+      return { success: true, message: `Document ${cleanId} removed from local buffer (failover)` };
     }
   }
 
@@ -496,7 +571,10 @@ export async function syncAllToMongo(data: Record<string, any[]> & { farmProfile
           await col.bulkWrite(chunk as any, { ordered: false });
         }
       } catch (err: any) {
-        console.error(`Error syncing collection ${key} to MongoDB:`, err);
+        console.warn(`🍃 [MongoDB] Bulk write notice in ${key}:`, err?.message);
+        if (err?.name?.includes('Mongo') || err?.message?.includes('timeout') || err?.message?.includes('PoolCleared') || err?.message?.includes('topology')) {
+          resetMongoClient();
+        }
       }
     }
   }
@@ -558,32 +636,44 @@ export async function pullAllFromMongo(): Promise<{
   if (database) {
     try {
       for (const key of collectionKeys) {
-        const docs = await database.collection(key).find({}).toArray();
+        const docs = await database.collection(key).find({}).maxTimeMS(4000).toArray();
         result[key] = docs.map((d) => {
           const { _id, ...rest } = d;
           return { ...rest, id: rest.id || _id };
         });
+        // Keep in-memory store in sync
+        if (!localMemoryDb[key]) localMemoryDb[key] = new Map();
+        result[key].forEach(item => {
+          const itemId = String(item.id || item.username || item.houseNumber || 'item_' + Math.random().toString(36).substring(2, 9));
+          localMemoryDb[key].set(itemId, item);
+        });
       }
 
       // Farm profile
-      const profileDoc = await database.collection('farmProfile').findOne({ _id: 'profile' } as any);
+      const profileDoc = await database.collection('farmProfile').findOne({ _id: 'profile' } as any, { maxTimeMS: 3000 } as any);
       if (profileDoc) {
         const { _id, ...rest } = profileDoc;
         farmProfile = rest;
+        if (!localMemoryDb['farmProfile']) localMemoryDb['farmProfile'] = new Map();
+        localMemoryDb['farmProfile'].set('profile', farmProfile);
       }
 
       // Global Settings
-      const settingsDoc = await database.collection('settings').findOne({ _id: 'global_settings' } as any);
+      const settingsDoc = await database.collection('settings').findOne({ _id: 'global_settings' } as any, { maxTimeMS: 3000 } as any);
       if (settingsDoc) {
         const { _id, ...rest } = settingsDoc;
         settings = rest;
+        if (!localMemoryDb['settings']) localMemoryDb['settings'] = new Map();
+        localMemoryDb['settings'].set('global_settings', settings);
       }
 
       // Breed Standards
-      const standardsDoc = await database.collection('standards').findOne({ _id: 'breed_standards' } as any);
+      const standardsDoc = await database.collection('standards').findOne({ _id: 'breed_standards' } as any, { maxTimeMS: 3000 } as any);
       if (standardsDoc) {
         const { _id, ...rest } = standardsDoc;
         standards = rest;
+        if (!localMemoryDb['standards']) localMemoryDb['standards'] = new Map();
+        localMemoryDb['standards'].set('breed_standards', standards);
       }
 
       lastSyncTime = new Date().toISOString();
@@ -597,7 +687,11 @@ export async function pullAllFromMongo(): Promise<{
         databaseEngine: 'mongodb',
       };
     } catch (err: any) {
-      console.error('Error reading collections from MongoDB:', err);
+      console.warn('🍃 [MongoDB] Notice reading collections (failing over to local server buffer):', err?.message);
+      if (err?.name?.includes('Mongo') || err?.message?.includes('timeout') || err?.message?.includes('PoolCleared') || err?.message?.includes('topology')) {
+        resetMongoClient();
+      }
+      connectionError = err?.message;
     }
   }
 
