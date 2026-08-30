@@ -10,7 +10,8 @@ import {
   pullAllFromMongo, 
   getMongoDb,
   registerDeviceHeartbeat,
-  incrementRtuRevision
+  incrementRtuRevision,
+  registerSseClient,
 } from './server/mongodb.js';
 
 dotenv.config();
@@ -53,6 +54,35 @@ async function startServer() {
       lastModified: telemetry.lastModified,
       activeDevices: telemetry.activeDevices,
       timestamp: new Date().toISOString(),
+    });
+  });
+
+  // RTU Real-Time Server-Sent Events (SSE) Stream
+  app.get('/api/rtu/events', (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders?.();
+
+    const deviceId = String(req.query.deviceId || req.headers['x-device-id'] || 'device_anonymous');
+    registerDeviceHeartbeat(deviceId);
+
+    // Send initial connected handshake
+    res.write(`data: ${JSON.stringify({ type: 'CONNECTED', timestamp: new Date().toISOString() })}\n\n`);
+
+    const unregister = registerSseClient((event) => {
+      res.write(`data: ${JSON.stringify(event)}\n\n`);
+    });
+
+    // Keep connection alive with periodic comments
+    const keepAlive = setInterval(() => {
+      res.write(': keepalive\n\n');
+    }, 15000);
+
+    req.on('close', () => {
+      clearInterval(keepAlive);
+      unregister();
     });
   });
 

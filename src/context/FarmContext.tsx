@@ -62,6 +62,7 @@ import {
   checkRtuHeartbeat,
   getRtuDeviceId,
   startMongoDBPolling,
+  subscribeToRtuEvents,
   RtuHeartbeatResponse
 } from '../services/mongodbSync';
 
@@ -598,9 +599,25 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  // RTU Heartbeat & Real-Time Auto Delta Fetch Loop
+  // Real-Time Bi-Directional Hydration Engine (Zero user intervention, live push & pull)
   useEffect(() => {
     let isMounted = true;
+
+    const pullUpdates = async (newRevision?: number) => {
+      if (!isMounted) return;
+      setRtuStatus('updating');
+      try {
+        await pullAllFromMongoDB();
+        if (isMounted) {
+          if (newRevision && newRevision > rtuRevisionRef.current) {
+            setRtuRevision(newRevision);
+          }
+          setRtuStatus('connected');
+        }
+      } catch {
+        if (isMounted) setRtuStatus('connected');
+      }
+    };
 
     const runHeartbeat = async () => {
       try {
@@ -612,27 +629,31 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
         // If server has a newer revision than what this client holds, pull remote updates in real time!
         if (heartbeat.revision && heartbeat.revision > rtuRevisionRef.current) {
-          setRtuStatus('updating');
-          await pullAllFromMongoDB();
-          if (isMounted) {
-            setRtuRevision(heartbeat.revision);
-            setRtuStatus('connected');
-          }
+          await pullUpdates(heartbeat.revision);
         }
-      } catch (err) {
+      } catch {
         // quiet fallback
       }
     };
 
-    // Initial check and hydration
+    // Initial silent check and background hydration
     runHeartbeat();
-    pullAllFromMongoDB().catch(() => {});
+    pullUpdates().catch(() => {});
 
-    // Poll RTU heartbeat every 3.5 seconds to keep all devices tightly synchronized
-    const heartbeatInterval = setInterval(runHeartbeat, 3500);
+    // 1. Instantaneous Server-Sent Events stream for instant push hydration across all devices
+    const unsubscribeSse = subscribeToRtuEvents((event) => {
+      if (!isMounted) return;
+      if (event.type === 'DATA_CHANGED' && event.revision && event.revision > rtuRevisionRef.current) {
+        pullUpdates(event.revision);
+      }
+    });
+
+    // 2. Continuous fallback telemetry loop (every 3 seconds) for network resilience
+    const heartbeatInterval = setInterval(runHeartbeat, 3000);
 
     return () => {
       isMounted = false;
+      unsubscribeSse();
       clearInterval(heartbeatInterval);
     };
   }, [currentUser]);
@@ -656,14 +677,34 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         feedRecords: feedConsumptionRecords,
         feedStock: feedStockEntries,
         farmProfile,
+        standards: {
+          standardVaccinationProgram: farmProfile.standardVaccinationProgram,
+          standardFeedGuide: farmProfile.standardFeedGuide,
+          standardHenday: farmProfile.standardHenday,
+          standardBodyWeights: farmProfile.standardBodyWeights,
+          standardEggWeights: farmProfile.standardEggWeights,
+        },
+        settings: {
+          currency: farmProfile.currency,
+          facilityHousesCount: farmProfile.facilityHousesCount,
+          totalBirdCapacity: farmProfile.totalBirdCapacity,
+          dailyEggCapacity: farmProfile.dailyEggCapacity,
+          farmOverviewNotes: farmProfile.farmOverviewNotes,
+        },
         depletions,
         transfers,
         medProducts,
+        medStockLogs,
         medAdmins: medAdministrations,
         bodyWeights,
         biosecurityLogs,
+        biosecurityRequirements,
+        biosecuritySummaries,
+        weeklyEggWeights,
         deliveries,
         users,
+        auditLogs: systemLogs,
+        systemLogs,
       });
 
       if (res.success) {
@@ -672,7 +713,7 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           lastSyncedAt: new Date().toISOString(),
           connected: true,
         }));
-        logAction('MONGODB_SYNC', 'system', 'Successfully synchronized all collections to MongoDB database.');
+        logAction('MONGODB_SYNC', 'system', 'Successfully synchronized all collections, profile, standards, and audit logs to MongoDB database.');
       }
       return res;
     } catch (e: any) {
@@ -699,12 +740,20 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           depletions: remoteDepletions,
           transfers: remoteTransfers,
           medProducts: remoteProducts,
+          medStockLogs: remoteMedStock,
           medAdmins: remoteMed,
           bodyWeights: remoteWeights,
           biosecurityLogs: remoteBio,
+          biosecurityRequirements: remoteBioReqs,
+          biosecuritySummaries: remoteBioSummaries,
+          weeklyEggWeights: remoteWeeklyWeights,
           deliveries: remoteDeliveries,
           users: remoteUsers,
           farmProfile: remoteProfile,
+          auditLogs: remoteAuditLogs,
+          systemLogs: remoteSystemLogs,
+          standards: remoteStandards,
+          settings: remoteSettings,
         } = res.data;
 
         if (Array.isArray(remoteEgg) && remoteEgg.length > 0) {
@@ -770,6 +819,14 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           });
         }
 
+        if (Array.isArray(remoteMedStock) && remoteMedStock.length > 0) {
+          setMedStockLogs(prev => {
+            const existingIds = new Set(prev.map(s => s.id));
+            const newRecords = remoteMedStock.filter((s: any) => !existingIds.has(s.id));
+            return [...newRecords, ...prev];
+          });
+        }
+
         if (Array.isArray(remoteMed) && remoteMed.length > 0) {
           setMedAdministrations(prev => {
             const existingIds = new Set(prev.map(r => r.id));
@@ -790,6 +847,46 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           setBiosecurityLogs(prev => {
             const existingIds = new Set(prev.map(r => `${r.requirementId}_${r.date}`));
             const newRecords = remoteBio.filter((r: any) => !existingIds.has(`${r.requirementId}_${r.date}`));
+            return [...newRecords, ...prev];
+          });
+        }
+
+        if (Array.isArray(remoteBioReqs) && remoteBioReqs.length > 0) {
+          setBiosecurityRequirements(prev => {
+            const map = new Map<string, BiosecurityRequirement>(prev.map(r => [r.id, r]));
+            remoteBioReqs.forEach((r: any) => {
+              if (r && r.id) {
+                map.set(r.id, { ...(map.get(r.id) || {}), ...r });
+              }
+            });
+            return Array.from(map.values());
+          });
+        }
+
+        if (remoteBioSummaries) {
+          if (Array.isArray(remoteBioSummaries)) {
+            setBiosecuritySummaries(prev => {
+              const next = { ...prev };
+              remoteBioSummaries.forEach((s: any) => {
+                if (s && (s.date || s.id)) {
+                  const d = String(s.date || s.id);
+                  next[d] = { ...(next[d] || {}), ...s, date: d };
+                }
+              });
+              return next;
+            });
+          } else if (typeof remoteBioSummaries === 'object') {
+            setBiosecuritySummaries(prev => ({
+              ...prev,
+              ...(remoteBioSummaries as Record<string, BiosecurityDailySummary>)
+            }));
+          }
+        }
+
+        if (Array.isArray(remoteWeeklyWeights) && remoteWeeklyWeights.length > 0) {
+          setWeeklyEggWeights(prev => {
+            const existingIds = new Set(prev.map(w => w.id));
+            const newRecords = remoteWeeklyWeights.filter((w: any) => !existingIds.has(w.id));
             return [...newRecords, ...prev];
           });
         }
@@ -816,8 +913,63 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           });
         }
 
-        if (remoteProfile && typeof remoteProfile === 'object' && 'name' in remoteProfile) {
-          setFarmProfile(prev => ({ ...prev, ...(remoteProfile as Partial<FarmProfile>) }));
+        // Hydrate and merge Farm Profile and Standards
+        const profileSource = remoteProfile || res.farmProfile;
+        if (profileSource && typeof profileSource === 'object' && ('name' in profileSource || 'address' in profileSource)) {
+          setFarmProfile(prev => ({
+            ...prev,
+            ...profileSource,
+            standardVaccinationProgram: Array.isArray(profileSource.standardVaccinationProgram) && profileSource.standardVaccinationProgram.length > 0
+              ? profileSource.standardVaccinationProgram
+              : prev.standardVaccinationProgram,
+            standardFeedGuide: Array.isArray(profileSource.standardFeedGuide) && profileSource.standardFeedGuide.length > 0
+              ? profileSource.standardFeedGuide
+              : prev.standardFeedGuide,
+            standardHenday: Array.isArray(profileSource.standardHenday) && profileSource.standardHenday.length > 0
+              ? profileSource.standardHenday
+              : prev.standardHenday,
+            standardBodyWeights: Array.isArray(profileSource.standardBodyWeights) && profileSource.standardBodyWeights.length > 0
+              ? profileSource.standardBodyWeights
+              : prev.standardBodyWeights,
+            standardEggWeights: Array.isArray(profileSource.standardEggWeights) && profileSource.standardEggWeights.length > 0
+              ? profileSource.standardEggWeights
+              : prev.standardEggWeights,
+          }));
+        }
+
+        const standardsSource = remoteStandards || res.standards;
+        if (standardsSource && typeof standardsSource === 'object') {
+          setFarmProfile(prev => ({
+            ...prev,
+            standardVaccinationProgram: Array.isArray(standardsSource.standardVaccinationProgram) ? standardsSource.standardVaccinationProgram : prev.standardVaccinationProgram,
+            standardFeedGuide: Array.isArray(standardsSource.standardFeedGuide) ? standardsSource.standardFeedGuide : prev.standardFeedGuide,
+            standardHenday: Array.isArray(standardsSource.standardHenday) ? standardsSource.standardHenday : prev.standardHenday,
+            standardBodyWeights: Array.isArray(standardsSource.standardBodyWeights) ? standardsSource.standardBodyWeights : prev.standardBodyWeights,
+            standardEggWeights: Array.isArray(standardsSource.standardEggWeights) ? standardsSource.standardEggWeights : prev.standardEggWeights,
+          }));
+        }
+
+        const settingsSource = remoteSettings || res.settings;
+        if (settingsSource && typeof settingsSource === 'object') {
+          setFarmProfile(prev => ({
+            ...prev,
+            ...settingsSource,
+          }));
+        }
+
+        // Hydrate Audit Logs / System Logs
+        const logsSource = (Array.isArray(remoteAuditLogs) && remoteAuditLogs.length > 0)
+          ? remoteAuditLogs
+          : (Array.isArray(remoteSystemLogs) && remoteSystemLogs.length > 0)
+          ? remoteSystemLogs
+          : null;
+
+        if (logsSource) {
+          setSystemLogs(prev => {
+            const existingIds = new Set(prev.map(l => l.id));
+            const newLogs = logsSource.filter((l: any) => !existingIds.has(l.id));
+            return [...newLogs, ...prev].slice(0, 500);
+          });
         }
 
         setMongoStatus(prev => ({
@@ -825,9 +977,9 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           lastSyncedAt: new Date().toISOString(),
           connected: true,
         }));
-        logAction('MONGODB_PULL', 'system', 'Hydrated latest farm data from MongoDB cloud database.');
+        logAction('MONGODB_PULL', 'system', 'Hydrated latest farm data, profile, standards, and logs from central database.');
       }
-      return { success: true, message: 'Hydrated latest farm records from MongoDB.' };
+      return { success: true, message: 'Hydrated latest farm records, standards, and audit logs from MongoDB.' };
     } catch (e: any) {
       return { success: false, message: e?.message || 'Error pulling data from MongoDB.' };
     } finally {
@@ -950,7 +1102,9 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       details,
       houseNumber
     };
-    setSystemLogs(prev => [newLog, ...prev]);
+    setSystemLogs(prev => [newLog, ...prev.slice(0, 499)]);
+    saveDocToFirestore('auditLogs', newLog.id, newLog);
+    saveDocToFirestore('systemLogs', newLog.id, newLog);
   };
 
   // Auth Functions with Cryptographic Security & Lockout Protection
@@ -1421,38 +1575,65 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  // Farm Profile Methods
+  // Farm Profile & Standard Requirements Methods (Live Sync)
   const updateFarmProfile = (profile: Partial<FarmProfile>) => {
     setFarmProfile(prev => {
       const next = { ...prev, ...profile };
+      saveDocToFirestore('farmProfile', 'profile', next);
       saveDocToFirestore('farm_config', 'profile', next);
+      saveDocToFirestore('settings', 'global_settings', next);
       return next;
     });
     logAction('UPDATE_FARM_PROFILE', 'admin', `Updated farm profile information (${profile.name || 'details'}).`);
   };
 
   const updateStandardVaccination = (program: StandardMedProgramItem[]) => {
-    setFarmProfile(prev => ({ ...prev, standardVaccinationProgram: program }));
+    setFarmProfile(prev => {
+      const next = { ...prev, standardVaccinationProgram: program };
+      saveDocToFirestore('farmProfile', 'profile', next);
+      saveDocToFirestore('standards', 'vaccination', { items: program });
+      return next;
+    });
     logAction('UPDATE_STANDARD_VACCINATION', 'admin', `Updated standard vaccination schedule (${program.length} items).`);
   };
 
   const updateStandardFeedGuide = (guide: StandardFeedGuideItem[]) => {
-    setFarmProfile(prev => ({ ...prev, standardFeedGuide: guide }));
+    setFarmProfile(prev => {
+      const next = { ...prev, standardFeedGuide: guide };
+      saveDocToFirestore('farmProfile', 'profile', next);
+      saveDocToFirestore('standards', 'feedGuide', { items: guide });
+      return next;
+    });
     logAction('UPDATE_STANDARD_FEED_GUIDE', 'admin', `Updated standard feed guide (${guide.length} items).`);
   };
 
   const updateStandardHenday = (henday: StandardHendayItem[]) => {
-    setFarmProfile(prev => ({ ...prev, standardHenday: henday }));
+    setFarmProfile(prev => {
+      const next = { ...prev, standardHenday: henday };
+      saveDocToFirestore('farmProfile', 'profile', next);
+      saveDocToFirestore('standards', 'henday', { items: henday });
+      return next;
+    });
     logAction('UPDATE_STANDARD_HENDAY', 'admin', `Updated standard Henday% production curve.`);
   };
 
   const updateStandardBodyWeights = (weights: StandardBodyWeightItem[]) => {
-    setFarmProfile(prev => ({ ...prev, standardBodyWeights: weights }));
+    setFarmProfile(prev => {
+      const next = { ...prev, standardBodyWeights: weights };
+      saveDocToFirestore('farmProfile', 'profile', next);
+      saveDocToFirestore('standards', 'bodyWeights', { items: weights });
+      return next;
+    });
     logAction('UPDATE_STANDARD_BODY_WEIGHTS', 'admin', `Updated standard body weight curves.`);
   };
 
   const updateStandardEggWeights = (eggWeights: StandardEggWeightItem[]) => {
-    setFarmProfile(prev => ({ ...prev, standardEggWeights: eggWeights }));
+    setFarmProfile(prev => {
+      const next = { ...prev, standardEggWeights: eggWeights };
+      saveDocToFirestore('farmProfile', 'profile', next);
+      saveDocToFirestore('standards', 'eggWeights', { items: eggWeights });
+      return next;
+    });
     logAction('UPDATE_STANDARD_EGG_WEIGHTS', 'admin', `Updated standard egg weight progression.`);
   };
 
@@ -1869,11 +2050,14 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       createdAt: new Date().toISOString()
     };
     setMedStockLogs(prev => [newLog, ...prev]);
+    saveDocToFirestore('medStockLogs', newLog.id, newLog);
 
     setMedProducts(prev => prev.map(p => {
       if (p.id === productId) {
         const nextUnits = p.currentStockUnits + unitsAdded;
-        return { ...p, currentStockUnits: nextUnits, currentStock: nextUnits };
+        const updated = { ...p, currentStockUnits: nextUnits, currentStock: nextUnits };
+        saveDocToFirestore('medProducts', productId, updated);
+        return updated;
       }
       return p;
     }));
@@ -2128,11 +2312,13 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       createdAt: new Date().toISOString()
     };
     setWeeklyEggWeights(prev => [newRecord, ...prev]);
+    saveDocToFirestore('weeklyEggWeights', newRecord.id, newRecord);
     logAction('LOG_EGG_WEIGHT', 'egg_prod', `Recorded weekly egg weight for ${record.houseNumber}: ${record.weightGrams}g at Prod Wk ${record.ageInProductionWeeks}.`, record.houseNumber);
   };
 
   const deleteWeeklyEggWeight = (id: string) => {
     setWeeklyEggWeights(prev => prev.filter(w => w.id !== id));
+    deleteDocFromFirestore('weeklyEggWeights', id);
     logAction('DELETE_EGG_WEIGHT', 'egg_prod', `Deleted weekly egg weight record ID ${id}.`);
   };
 
@@ -2145,29 +2331,46 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       createdAt: new Date().toISOString()
     };
     setBiosecurityRequirements(prev => [newReq, ...prev]);
+    saveDocToFirestore('biosecurityRequirements', newReq.id, newReq);
     logAction('ADD_BIOSECURITY_REQ', 'biosecurity', `Added biosecurity protocol: "${req.title}" (${req.category}, ${req.criticalLevel}).`);
   };
 
   const updateBiosecurityRequirement = (id: string, updates: Partial<BiosecurityRequirement>) => {
-    setBiosecurityRequirements(prev => prev.map(r => r.id === id ? { ...r, ...updates } : r));
+    let updated: BiosecurityRequirement | undefined;
+    setBiosecurityRequirements(prev => prev.map(r => {
+      if (r.id === id) {
+        updated = { ...r, ...updates };
+        return updated;
+      }
+      return r;
+    }));
+    if (updated) {
+      saveDocToFirestore('biosecurityRequirements', id, updated);
+    }
     logAction('UPDATE_BIOSECURITY_REQ', 'biosecurity', `Updated biosecurity protocol ID ${id}.`);
   };
 
   const deleteBiosecurityRequirement = (id: string) => {
     const target = biosecurityRequirements.find(r => r.id === id);
     setBiosecurityRequirements(prev => prev.filter(r => r.id !== id));
+    deleteDocFromFirestore('biosecurityRequirements', id);
     logAction('DELETE_BIOSECURITY_REQ', 'biosecurity', `Deleted biosecurity protocol: "${target?.title || id}".`);
   };
 
   const toggleBiosecurityRequirementActive = (id: string) => {
+    let updated: BiosecurityRequirement | undefined;
     setBiosecurityRequirements(prev => prev.map(r => {
       if (r.id === id) {
         const nextActive = !r.active;
         logAction('TOGGLE_BIOSECURITY_REQ', 'biosecurity', `${nextActive ? 'Activated' : 'Deactivated'} biosecurity protocol: "${r.title}".`);
-        return { ...r, active: nextActive };
+        updated = { ...r, active: nextActive };
+        return updated;
       }
       return r;
     }));
+    if (updated) {
+      saveDocToFirestore('biosecurityRequirements', id, updated);
+    }
   };
 
   const calculateAndUpdateDailySummary = (date: string, updatedLogs: BiosecurityVerificationLog[], currentRequirements: BiosecurityRequirement[]) => {
@@ -2317,6 +2520,7 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       ...prev,
       [date]: updatedSummary
     }));
+    saveDocToFirestore('biosecuritySummaries', date, updatedSummary);
 
     logAction('BIOSECURITY_SUPERVISOR_SIGNOFF', 'biosecurity', `Manager supervisor sign-off approved for ${date} with ${score}% compliance score.`);
   };

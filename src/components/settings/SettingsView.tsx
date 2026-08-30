@@ -66,9 +66,6 @@ export const SettingsView: React.FC = () => {
   const [selectedUserForHouses, setSelectedUserForHouses] = useState<User | null>(null);
   const [selectedHouses, setSelectedHouses] = useState<string[]>([]);
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [isSyncingMongo, setIsSyncingMongo] = useState(false);
-  const [isPullingMongo, setIsPullingMongo] = useState(false);
-  const [mongoFeedback, setMongoFeedback] = useState<string | null>(null);
   const [showClearModal, setShowClearModal] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const [clearConfirmationText, setClearConfirmationText] = useState('');
@@ -159,32 +156,6 @@ export const SettingsView: React.FC = () => {
       }, 1500);
     } finally {
       setIsClearing(false);
-    }
-  };
-
-  const handleSyncToMongo = async () => {
-    setIsSyncingMongo(true);
-    setMongoFeedback(null);
-    try {
-      const res = await syncAllToMongoDB();
-      setMongoFeedback(res.message);
-    } catch (e: any) {
-      setMongoFeedback(e?.message || 'Error syncing to MongoDB');
-    } finally {
-      setIsSyncingMongo(false);
-    }
-  };
-
-  const handlePullFromMongo = async () => {
-    setIsPullingMongo(true);
-    setMongoFeedback(null);
-    try {
-      const res = await pullAllFromMongoDB();
-      setMongoFeedback(res.message);
-    } catch (e: any) {
-      setMongoFeedback(e?.message || 'Error pulling from MongoDB');
-    } finally {
-      setIsPullingMongo(false);
     }
   };
 
@@ -853,53 +824,38 @@ export const SettingsView: React.FC = () => {
               </div>
             </div>
 
-            {/* MongoDB Document Cloud Sync */}
+            {/* MongoDB Central Cloud Database - Automated Background Sync */}
             <div className="p-5 bg-gradient-to-br from-emerald-50 via-teal-50 to-emerald-50 border border-emerald-300 rounded-3xl space-y-4 shadow-xs">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                  <h4 className="font-bold text-sm text-slate-900 flex items-center gap-2">
-                    <Database className="w-4 h-4 text-emerald-700" />
-                    <span>MongoDB Document Cloud Database</span>
-                  </h4>
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-bold text-sm text-slate-900 flex items-center gap-2">
+                      <Database className="w-4 h-4 text-emerald-700" />
+                      <span>Central Cloud Database</span>
+                    </h4>
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-900 font-extrabold text-[10px] uppercase tracking-wider flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-700" />
+                      Background Syncing
+                    </span>
+                  </div>
                   <p className="text-xs text-slate-600 mt-1 max-w-xl">
-                    High-throughput, reliable document synchronization for farm logs, egg batches, feed stocks, biosecurity verifications, and user accounts.
+                    High-throughput, reliable document synchronization for farm logs, egg batches, feed stocks, biosecurity verifications, and user accounts. Syncs automatically in the background across all devices.
                   </p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    type="button"
-                    onClick={handleSyncToMongo}
-                    disabled={isSyncingMongo || isPullingMongo}
-                    className="px-3.5 py-2 bg-gradient-to-r from-emerald-700 to-teal-700 hover:from-emerald-800 hover:to-teal-800 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-50"
-                  >
-                    <CloudUpload className={`w-3.5 h-3.5 ${isSyncingMongo ? 'animate-spin' : ''}`} />
-                    <span>{isSyncingMongo ? 'Pushing...' : 'Push to MongoDB'}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handlePullFromMongo}
-                    disabled={isSyncingMongo || isPullingMongo}
-                    className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-800 border border-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-2xs cursor-pointer disabled:opacity-50"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${isPullingMongo ? 'animate-spin' : ''}`} />
-                    <span>{isPullingMongo ? 'Pulling...' : 'Pull Records'}</span>
-                  </button>
+                  <div className="px-3 py-1.5 bg-white/90 border border-emerald-200 rounded-xl text-xs font-bold text-emerald-900 flex items-center gap-1.5 shadow-2xs">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span>Live Connected</span>
+                  </div>
                 </div>
               </div>
 
-              {mongoFeedback && (
-                <div className="p-3 bg-white/90 border border-emerald-300 rounded-xl text-xs font-medium text-slate-800 flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>{mongoFeedback}</span>
-                </div>
-              )}
-
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
                 <div className="p-3 bg-white/80 backdrop-blur-xs rounded-2xl border border-emerald-200 space-y-1">
-                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Cloud Engine</span>
+                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Sync Mode</span>
                   <div className="flex items-center gap-2 text-xs font-extrabold text-slate-900">
                     <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                    <span>MongoDB {mongoStatus.connected ? 'Active' : 'Standby'}</span>
+                    <span>Automatic Background</span>
                   </div>
                 </div>
                 <div className="p-3 bg-white/80 backdrop-blur-xs rounded-2xl border border-emerald-200 space-y-1">
@@ -909,9 +865,9 @@ export const SettingsView: React.FC = () => {
                   </div>
                 </div>
                 <div className="p-3 bg-white/80 backdrop-blur-xs rounded-2xl border border-emerald-200 space-y-1">
-                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Last Sync</span>
+                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Background Telemetry</span>
                   <div className="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
-                    <span>{mongoStatus.lastSyncedAt ? new Date(mongoStatus.lastSyncedAt).toLocaleTimeString() : 'Ready to Sync'}</span>
+                    <span>{mongoStatus.lastSyncedAt ? new Date(mongoStatus.lastSyncedAt).toLocaleTimeString() : 'Active & Synced'}</span>
                   </div>
                 </div>
               </div>

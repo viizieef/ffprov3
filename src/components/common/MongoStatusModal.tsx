@@ -1,21 +1,14 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { 
-  CloudUpload, 
-  RefreshCw, 
   CheckCircle2, 
-  AlertCircle, 
   X, 
   Database,
-  Layers,
-  ArrowDownToLine,
-  Server,
-  Leaf,
-  Activity,
-  HardDrive,
   Radio,
   Smartphone,
-  Users,
-  Wifi
+  Activity,
+  Zap,
+  ShieldCheck,
+  Check
 } from 'lucide-react';
 import { useFarm } from '../../context/FarmContext';
 
@@ -29,73 +22,18 @@ export const MongoStatusModal: React.FC<MongoStatusModalProps> = ({ isOpen, onCl
     eggProductionRecords, 
     flocks, 
     feedConsumptionRecords, 
-    farmProfile, 
     depletions, 
-    medAdministrations, 
-    bodyWeights, 
-    biosecurityLogs, 
-    users,
-    syncAllToMongoDB,
-    pullAllFromMongoDB,
     mongoStatus,
     rtuRevision,
     activeDevicesCount,
     lastRtuHeartbeat,
-    rtuStatus,
-    triggerRtuSync
+    rtuStatus
   } = useFarm();
-
-  const [isPushing, setIsPushing] = useState(false);
-  const [isPulling, setIsPulling] = useState(false);
-  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   if (!isOpen) return null;
 
   const isConnected = mongoStatus?.connected;
   const dbName = mongoStatus?.dbName || 'farmflow_db';
-
-  const handlePush = async () => {
-    setIsPushing(true);
-    setFeedback(null);
-    try {
-      const res = await syncAllToMongoDB();
-      if (res.success) {
-        setFeedback({ type: 'success', message: res.message });
-      } else {
-        setFeedback({ type: 'error', message: res.message });
-      }
-    } catch (e: any) {
-      setFeedback({ type: 'error', message: e?.message || 'Error pushing to MongoDB' });
-    } finally {
-      setIsPushing(false);
-    }
-  };
-
-  const handlePull = async () => {
-    setIsPulling(true);
-    setFeedback(null);
-    try {
-      const res = await pullAllFromMongoDB();
-      if (res.success) {
-        setFeedback({ type: 'success', message: res.message });
-      } else {
-        setFeedback({ type: 'error', message: res.message });
-      }
-    } catch (e: any) {
-      setFeedback({ type: 'error', message: e?.message || 'Error pulling from MongoDB' });
-    } finally {
-      setIsPulling(false);
-    }
-  };
-
-  const handleLiveRtuSync = async () => {
-    try {
-      await triggerRtuSync();
-      setFeedback({ type: 'success', message: 'Live RTU delta synchronized with central database.' });
-    } catch (e: any) {
-      setFeedback({ type: 'error', message: 'Failed to complete RTU sync.' });
-    }
-  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-teal-950/60 backdrop-blur-xs animate-in fade-in duration-200">
@@ -108,17 +46,17 @@ export const MongoStatusModal: React.FC<MongoStatusModalProps> = ({ isOpen, onCl
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="font-extrabold text-slate-900 text-base">RTU Central Database Live Feed</h3>
+                <h3 className="font-extrabold text-slate-900 text-base">Central Database Background Sync</h3>
                 <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-extrabold rounded-md uppercase tracking-wider">
-                  RTU Mode Active
+                  Live Background Sync
                 </span>
               </div>
-              <p className="text-xs text-slate-500">All accounts & devices connect directly to one centralized farm database</p>
+              <p className="text-xs text-slate-500">Continuous automatic background synchronization across all devices & accounts</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 transition"
+            className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 transition cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -135,7 +73,11 @@ export const MongoStatusModal: React.FC<MongoStatusModalProps> = ({ isOpen, onCl
                   <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
                 </span>
                 <span className="text-xs font-extrabold text-slate-900">
-                  Real-Time Unit (RTU) Direct Link
+                  {isConnected ? 'Database Live Connected' : 'Central Database Active'}
+                </span>
+                <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-900 font-bold text-[10px] flex items-center gap-1">
+                  <Check className="w-3 h-3 text-emerald-700" />
+                  Auto-Syncing
                 </span>
               </div>
               <div className="flex items-center gap-2">
@@ -149,26 +91,32 @@ export const MongoStatusModal: React.FC<MongoStatusModalProps> = ({ isOpen, onCl
             </div>
 
             <div className="grid grid-cols-2 gap-2 text-xs">
-              <div className="flex items-center gap-2 p-2 bg-white/80 rounded-xl border border-emerald-100">
+              <div className="flex items-center gap-2 p-2.5 bg-white/80 rounded-xl border border-emerald-100">
                 <Smartphone className="w-4 h-4 text-teal-700 shrink-0" />
                 <div>
-                  <span className="text-[10px] text-slate-500 block font-medium">Active Connected Devices</span>
-                  <span className="font-bold text-slate-900">{activeDevicesCount || 1} Connected</span>
+                  <span className="text-[10px] text-slate-500 block font-medium">Connected Devices</span>
+                  <span className="font-bold text-slate-900">{activeDevicesCount || 1} Active Device{activeDevicesCount > 1 ? 's' : ''}</span>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 p-2 bg-white/80 rounded-xl border border-emerald-100">
+              <div className="flex items-center gap-2 p-2.5 bg-white/80 rounded-xl border border-emerald-100">
                 <Activity className="w-4 h-4 text-emerald-700 shrink-0" />
                 <div>
-                  <span className="text-[10px] text-slate-500 block font-medium">Sync Latency & Heartbeat</span>
-                  <span className="font-bold text-emerald-800">Direct Live RTU</span>
+                  <span className="text-[10px] text-slate-500 block font-medium">Sync Mechanism</span>
+                  <span className="font-bold text-emerald-800">Automatic Background</span>
                 </div>
               </div>
             </div>
 
-            <p className="text-[11px] text-slate-600 leading-relaxed">
-              Every egg harvest, feed log, depletion, and biosecurity check is written immediately to the central cloud database. Multi-device updates synchronize automatically every 3.5 seconds.
-            </p>
+            <div className="p-3 bg-white/90 rounded-xl border border-emerald-200/80 text-[11px] text-slate-600 leading-relaxed space-y-1">
+              <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                <Zap className="w-3.5 h-3.5 text-amber-500" />
+                <span>Zero-touch Background Sync</span>
+              </div>
+              <p>
+                Every egg collection, mortality entry, feed allocation, and biosecurity checklist item is transmitted automatically in the background as soon as you record it. Updates from other devices or staff members are streamed seamlessly without needing manual refresh.
+              </p>
+            </div>
           </div>
 
           {/* Cloud Collections Breakdown */}
@@ -176,15 +124,12 @@ export const MongoStatusModal: React.FC<MongoStatusModalProps> = ({ isOpen, onCl
             <div className="flex items-center justify-between text-xs font-bold text-slate-600">
               <span className="flex items-center gap-1.5">
                 <Database className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Synchronized Central Records</span>
+                <span>Live Synced Records</span>
               </span>
-              <button 
-                onClick={handleLiveRtuSync}
-                className="text-[11px] text-emerald-700 hover:text-emerald-800 font-bold flex items-center gap-1 cursor-pointer"
-              >
-                <RefreshCw className="w-3 h-3" />
-                <span>Check Live Delta</span>
-              </button>
+              <span className="text-[11px] text-emerald-700 font-bold flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Synchronized in Real-Time</span>
+              </span>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
@@ -207,48 +152,26 @@ export const MongoStatusModal: React.FC<MongoStatusModalProps> = ({ isOpen, onCl
             </div>
           </div>
 
-          {/* Feedback */}
-          {feedback && (
-            <div className={`p-3 rounded-2xl border text-xs font-medium flex items-center gap-2 ${
-              feedback.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-rose-50 border-rose-200 text-rose-900'
-            }`}>
-              {feedback.type === 'success' ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-              ) : (
-                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-              )}
-              <span>{feedback.message}</span>
+          {/* Background Sync Info Footer */}
+          <div className="p-3 bg-emerald-50/70 border border-emerald-200/80 rounded-2xl flex items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2 text-emerald-950 font-medium">
+              <ShieldCheck className="w-4 h-4 text-emerald-700 shrink-0" />
+              <span>Background sync status: <strong className="text-emerald-900">Active & Up to date</strong></span>
             </div>
-          )}
-
-          {/* Action Buttons */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
             <button
               type="button"
-              onClick={handlePush}
-              disabled={isPushing || isPulling}
-              className="px-4 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-2xl text-xs font-extrabold flex items-center justify-center gap-2 shadow-md shadow-emerald-600/20 transition cursor-pointer disabled:opacity-50"
+              onClick={onClose}
+              className="px-4 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer shrink-0"
             >
-              <CloudUpload className={`w-4 h-4 ${isPushing ? 'animate-spin' : ''}`} />
-              <span>{isPushing ? 'Syncing to Database...' : 'Push All To Central DB'}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handlePull}
-              disabled={isPushing || isPulling}
-              className="px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 rounded-2xl text-xs font-extrabold flex items-center justify-center gap-2 transition cursor-pointer disabled:opacity-50"
-            >
-              <ArrowDownToLine className={`w-4 h-4 ${isPulling ? 'animate-spin' : ''}`} />
-              <span>{isPulling ? 'Refreshing Records...' : 'Pull Latest from Central DB'}</span>
+              Done
             </button>
           </div>
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-          <span>Target DB: {dbName} (RTU Mode)</span>
-          <span>Engine: MongoDB Native Node.js Driver v6</span>
+        <div className="px-6 py-3.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+          <span>Target DB: {dbName}</span>
+          <span>Last Heartbeat: {lastRtuHeartbeat ? new Date(lastRtuHeartbeat).toLocaleTimeString() : 'Active'}</span>
         </div>
       </div>
     </div>

@@ -20,6 +20,37 @@ let connectionError: string | null = null;
 let rtuRevision: number = 1;
 let lastModifiedTime: string = new Date().toISOString();
 const activeDeviceHeartbeats = new Map<string, number>();
+const sseClients = new Set<(event: { type: string; revision: number; collection?: string; id?: string; timestamp: string }) => void>();
+
+/**
+ * Registers an SSE client for instantaneous real-time change events
+ */
+export function registerSseClient(callback: (event: { type: string; revision: number; collection?: string; id?: string; timestamp: string }) => void): () => void {
+  sseClients.add(callback);
+  return () => {
+    sseClients.delete(callback);
+  };
+}
+
+/**
+ * Broadcasts real-time delta updates to all connected browser clients instantly
+ */
+export function broadcastChangeEvent(collection?: string, id?: string) {
+  const payload = {
+    type: 'DATA_CHANGED',
+    revision: rtuRevision,
+    collection,
+    id,
+    timestamp: lastModifiedTime,
+  };
+  sseClients.forEach(cb => {
+    try {
+      cb(payload);
+    } catch {
+      // ignore broken client pipe
+    }
+  });
+}
 
 /**
  * Registers an active device heartbeat in RTU mode
@@ -42,10 +73,11 @@ export function registerDeviceHeartbeat(deviceId: string): { revision: number; l
   };
 }
 
-export function incrementRtuRevision(): number {
+export function incrementRtuRevision(collection?: string, id?: string): number {
   rtuRevision += 1;
   lastModifiedTime = new Date().toISOString();
   lastSyncTime = lastModifiedTime;
+  broadcastChangeEvent(collection, id);
   return rtuRevision;
 }
 
@@ -58,13 +90,20 @@ const localMemoryDb: Record<string, Map<string, any>> = {
   depletions: new Map(),
   transfers: new Map(),
   medProducts: new Map(),
+  medStockLogs: new Map(),
   medAdmins: new Map(),
   bodyWeights: new Map(),
   biosecurityLogs: new Map(),
+  biosecurityRequirements: new Map(),
+  biosecuritySummaries: new Map(),
+  weeklyEggWeights: new Map(),
   deliveries: new Map(),
   users: new Map(),
   farmProfile: new Map(),
   auditLogs: new Map(),
+  systemLogs: new Map(),
+  settings: new Map(),
+  standards: new Map(),
 };
 
 /**
@@ -228,7 +267,7 @@ export async function saveMongoDoc(collectionName: string, id: string, docData: 
   const cleanId = String(id || docData.id || docData._id || 'item_' + Date.now());
   const payload = { ...docData, id: cleanId, updatedAt: new Date().toISOString() };
   localMemoryDb[collectionName].set(cleanId, payload);
-  incrementRtuRevision();
+  incrementRtuRevision(collectionName, cleanId);
 
   if (database) {
     try {
@@ -260,7 +299,7 @@ export async function deleteMongoDoc(collectionName: string, id: string): Promis
   if (localMemoryDb[collectionName]) {
     localMemoryDb[collectionName].delete(cleanId);
   }
-  incrementRtuRevision();
+  incrementRtuRevision(collectionName, cleanId);
 
   if (database) {
     try {
@@ -280,7 +319,7 @@ export async function deleteMongoDoc(collectionName: string, id: string): Promis
 /**
  * Bulk syncs all farm collections to MongoDB
  */
-export async function syncAllToMongo(data: Record<string, any[]> & { farmProfile?: any }): Promise<{
+export async function syncAllToMongo(data: Record<string, any[]> & { farmProfile?: any; settings?: any; standards?: any }): Promise<{
   success: boolean;
   message: string;
   counts: Record<string, number>;
@@ -298,11 +337,19 @@ export async function syncAllToMongo(data: Record<string, any[]> & { farmProfile
     'depletions',
     'transfers',
     'medProducts',
+    'medStockLogs',
     'medAdmins',
     'bodyWeights',
     'biosecurityLogs',
+    'biosecurityRequirements',
+    'biosecuritySummaries',
+    'weeklyEggWeights',
     'deliveries',
     'users',
+    'auditLogs',
+    'systemLogs',
+    'standards',
+    'settings',
   ];
 
   // Also update farmProfile
@@ -318,6 +365,40 @@ export async function syncAllToMongo(data: Record<string, any[]> & { farmProfile
         );
       } catch (e) {
         console.warn('MongoDB farmProfile sync notice:', e);
+      }
+    }
+  }
+
+  // Also update settings doc if provided separately
+  if (data.settings) {
+    if (!localMemoryDb['settings']) localMemoryDb['settings'] = new Map();
+    localMemoryDb['settings'].set('global_settings', data.settings);
+    if (database) {
+      try {
+        await database.collection('settings').updateOne(
+          { _id: 'global_settings' } as any,
+          { $set: { ...data.settings, _id: 'global_settings', updatedAt: new Date().toISOString() } },
+          { upsert: true }
+        );
+      } catch (e) {
+        console.warn('MongoDB settings sync notice:', e);
+      }
+    }
+  }
+
+  // Also update standards doc if provided separately
+  if (data.standards) {
+    if (!localMemoryDb['standards']) localMemoryDb['standards'] = new Map();
+    localMemoryDb['standards'].set('breed_standards', data.standards);
+    if (database) {
+      try {
+        await database.collection('standards').updateOne(
+          { _id: 'breed_standards' } as any,
+          { $set: { ...data.standards, _id: 'breed_standards', updatedAt: new Date().toISOString() } },
+          { upsert: true }
+        );
+      } catch (e) {
+        console.warn('MongoDB standards sync notice:', e);
       }
     }
   }
@@ -363,6 +444,7 @@ export async function syncAllToMongo(data: Record<string, any[]> & { farmProfile
   }
 
   lastSyncTime = new Date().toISOString();
+  incrementRtuRevision('all', 'bulk_sync');
 
   return {
     success: true,
@@ -382,11 +464,15 @@ export async function pullAllFromMongo(): Promise<{
   message: string;
   data: Record<string, any[]>;
   farmProfile?: any;
+  settings?: any;
+  standards?: any;
   databaseEngine: 'mongodb' | 'local';
 }> {
   const database = await getMongoDb();
   const result: Record<string, any[]> = {};
   let farmProfile: any = null;
+  let settings: any = null;
+  let standards: any = null;
 
   const collectionKeys = [
     'eggRecords',
@@ -396,11 +482,19 @@ export async function pullAllFromMongo(): Promise<{
     'depletions',
     'transfers',
     'medProducts',
+    'medStockLogs',
     'medAdmins',
     'bodyWeights',
     'biosecurityLogs',
+    'biosecurityRequirements',
+    'biosecuritySummaries',
+    'weeklyEggWeights',
     'deliveries',
     'users',
+    'auditLogs',
+    'systemLogs',
+    'standards',
+    'settings',
   ];
 
   if (database) {
@@ -420,12 +514,28 @@ export async function pullAllFromMongo(): Promise<{
         farmProfile = rest;
       }
 
+      // Global Settings
+      const settingsDoc = await database.collection('settings').findOne({ _id: 'global_settings' } as any);
+      if (settingsDoc) {
+        const { _id, ...rest } = settingsDoc;
+        settings = rest;
+      }
+
+      // Breed Standards
+      const standardsDoc = await database.collection('standards').findOne({ _id: 'breed_standards' } as any);
+      if (standardsDoc) {
+        const { _id, ...rest } = standardsDoc;
+        standards = rest;
+      }
+
       lastSyncTime = new Date().toISOString();
       return {
         success: true,
         message: 'Successfully pulled latest farm collections from MongoDB cluster.',
         data: result,
         farmProfile,
+        settings,
+        standards,
         databaseEngine: 'mongodb',
       };
     } catch (err: any) {
@@ -445,12 +555,20 @@ export async function pullAllFromMongo(): Promise<{
   if (localMemoryDb['farmProfile'] && localMemoryDb['farmProfile'].has('profile')) {
     farmProfile = localMemoryDb['farmProfile'].get('profile');
   }
+  if (localMemoryDb['settings'] && localMemoryDb['settings'].has('global_settings')) {
+    settings = localMemoryDb['settings'].get('global_settings');
+  }
+  if (localMemoryDb['standards'] && localMemoryDb['standards'].has('breed_standards')) {
+    standards = localMemoryDb['standards'].get('breed_standards');
+  }
 
   return {
     success: true,
     message: 'Pulled data from server buffer.',
     data: result,
     farmProfile,
+    settings,
+    standards,
     databaseEngine: 'local',
   };
 }

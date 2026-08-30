@@ -55,8 +55,57 @@ export async function checkRtuHeartbeat(): Promise<RtuHeartbeatResponse | null> 
 }
 
 /**
- * Query the MongoDB cluster health and connection state
+ * Subscribes to real-time live push events via SSE
  */
+export function subscribeToRtuEvents(onEvent: (event: { type: string; revision?: number; collection?: string; id?: string }) => void): () => void {
+  if (typeof window === 'undefined' || typeof EventSource === 'undefined') {
+    return () => {};
+  }
+
+  let eventSource: EventSource | null = null;
+  let isClosed = false;
+
+  const connect = () => {
+    if (isClosed) return;
+    try {
+      const deviceId = getRtuDeviceId();
+      eventSource = new EventSource(`/api/rtu/events?deviceId=${encodeURIComponent(deviceId)}`);
+
+      eventSource.onmessage = (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          onEvent(data);
+        } catch {
+          // ignore non-json
+        }
+      };
+
+      eventSource.onerror = () => {
+        if (eventSource) {
+          eventSource.close();
+          eventSource = null;
+        }
+        if (!isClosed) {
+          setTimeout(connect, 3000);
+        }
+      };
+    } catch {
+      if (!isClosed) {
+        setTimeout(connect, 4000);
+      }
+    }
+  };
+
+  connect();
+
+  return () => {
+    isClosed = true;
+    if (eventSource) {
+      eventSource.close();
+      eventSource = null;
+    }
+  };
+}
 export async function getMongoDBStatus(): Promise<MongoSyncStatus> {
   try {
     const res = await fetch('/api/mongodb/status', {
@@ -101,14 +150,22 @@ export async function syncAllDataToMongoDB(data: {
   feedRecords: any[];
   feedStock?: any[];
   farmProfile: any;
+  standards?: any;
+  settings?: any;
   depletions: any[];
   transfers?: any[];
   medProducts?: any[];
+  medStockLogs?: any[];
   medAdmins: any[];
   bodyWeights: any[];
   biosecurityLogs: any[];
+  biosecurityRequirements?: any[];
+  biosecuritySummaries?: any;
+  weeklyEggWeights?: any[];
   deliveries?: any[];
   users: any[];
+  auditLogs?: any[];
+  systemLogs?: any[];
 }): Promise<{ success: boolean; message: string; counts?: Record<string, number> }> {
   try {
     const res = await fetch('/api/mongodb/sync', {
@@ -144,6 +201,8 @@ export async function pullAllDataFromMongoDB(): Promise<{
   message: string;
   data?: Record<string, any[]>;
   farmProfile?: any;
+  settings?: any;
+  standards?: any;
 }> {
   try {
     const res = await fetch('/api/mongodb/pull', {
@@ -161,6 +220,8 @@ export async function pullAllDataFromMongoDB(): Promise<{
       message: result.message || 'Successfully pulled records from MongoDB.',
       data: result.data || {},
       farmProfile: result.farmProfile || null,
+      settings: result.settings || null,
+      standards: result.standards || null,
     };
   } catch (err: any) {
     return {
