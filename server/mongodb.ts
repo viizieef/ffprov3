@@ -81,6 +81,26 @@ export function incrementRtuRevision(collection?: string, id?: string): number {
   return rtuRevision;
 }
 
+// Baseline initial seeds import for server fallback persistence
+import {
+  INITIAL_FARM_PROFILE,
+  INITIAL_FLOCKS,
+  INITIAL_FEED_STOCK,
+  INITIAL_FEED_CONSUMPTION,
+  INITIAL_MED_PRODUCTS,
+  INITIAL_MED_ADMIN,
+  INITIAL_BODY_WEIGHTS,
+  INITIAL_EGG_PRODUCTION,
+  INITIAL_WEEKLY_EGG_WEIGHTS,
+  INITIAL_USERS,
+  INITIAL_DEPLETIONS,
+  INITIAL_BIRD_TRANSFERS,
+  INITIAL_BIOSECURITY_REQUIREMENTS,
+  INITIAL_BIOSECURITY_LOGS,
+  INITIAL_DELIVERIES,
+  INITIAL_SYSTEM_LOGS
+} from '../src/data/initialData.js';
+
 // In-memory persistent fallback if MongoDB URI is not provided yet or server is starting
 const localMemoryDb: Record<string, Map<string, any>> = {
   eggRecords: new Map(),
@@ -105,6 +125,44 @@ const localMemoryDb: Record<string, Map<string, any>> = {
   settings: new Map(),
   standards: new Map(),
 };
+
+/**
+ * Prepopulates local memory fallback with baseline records
+ */
+function initializeServerSeed() {
+  INITIAL_FLOCKS.forEach(f => localMemoryDb.flocks.set(f.houseNumber, f));
+  INITIAL_EGG_PRODUCTION.forEach(e => localMemoryDb.eggRecords.set(e.id, e));
+  INITIAL_FEED_CONSUMPTION.forEach(f => localMemoryDb.feedRecords.set(f.id, f));
+  INITIAL_FEED_STOCK.forEach(s => localMemoryDb.feedStock.set(s.id, s));
+  INITIAL_DEPLETIONS.forEach(d => localMemoryDb.depletions.set(d.id, d));
+  INITIAL_BIRD_TRANSFERS.forEach(t => localMemoryDb.transfers.set(t.id, t));
+  INITIAL_MED_PRODUCTS.forEach(p => localMemoryDb.medProducts.set(p.id, p));
+  INITIAL_MED_ADMIN.forEach(m => localMemoryDb.medAdmins.set(m.id, m));
+  INITIAL_BODY_WEIGHTS.forEach(b => localMemoryDb.bodyWeights.set(b.id, b));
+  INITIAL_BIOSECURITY_REQUIREMENTS.forEach(r => localMemoryDb.biosecurityRequirements.set(r.id, r));
+  INITIAL_BIOSECURITY_LOGS.forEach(l => localMemoryDb.biosecurityLogs.set(`${l.requirementId}_${l.date}`, l));
+  INITIAL_WEEKLY_EGG_WEIGHTS.forEach(w => localMemoryDb.weeklyEggWeights.set(w.id, w));
+  INITIAL_DELIVERIES.forEach(d => localMemoryDb.deliveries.set(d.id, d));
+  INITIAL_USERS.forEach(u => localMemoryDb.users.set(u.username.toLowerCase(), u));
+  localMemoryDb.farmProfile.set('profile', INITIAL_FARM_PROFILE);
+  INITIAL_SYSTEM_LOGS.forEach(l => localMemoryDb.systemLogs.set(l.id, l));
+  localMemoryDb.standards.set('breed_standards', {
+    standardVaccinationProgram: INITIAL_FARM_PROFILE.standardVaccinationProgram,
+    standardFeedGuide: INITIAL_FARM_PROFILE.standardFeedGuide,
+    standardHenday: INITIAL_FARM_PROFILE.standardHenday,
+    standardBodyWeights: INITIAL_FARM_PROFILE.standardBodyWeights,
+    standardEggWeights: INITIAL_FARM_PROFILE.standardEggWeights,
+  });
+  localMemoryDb.settings.set('global_settings', {
+    currency: INITIAL_FARM_PROFILE.currency,
+    facilityHousesCount: INITIAL_FARM_PROFILE.facilityHousesCount,
+    totalBirdCapacity: INITIAL_FARM_PROFILE.totalBirdCapacity,
+    dailyEggCapacity: INITIAL_FARM_PROFILE.dailyEggCapacity,
+    farmOverviewNotes: INITIAL_FARM_PROFILE.farmOverviewNotes,
+  });
+}
+
+initializeServerSeed();
 
 /**
  * Initializes or returns the cached MongoDB database instance.

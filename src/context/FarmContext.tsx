@@ -656,7 +656,7 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       unsubscribeSse();
       clearInterval(heartbeatInterval);
     };
-  }, [currentUser]);
+  }, []);
 
   const checkDBStatus = async () => {
     await refreshStorageQuota();
@@ -756,185 +756,125 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           settings: remoteSettings,
         } = res.data;
 
-        if (Array.isArray(remoteEgg) && remoteEgg.length > 0) {
-          setRawEggRecords(prev => {
-            const existingIds = new Set(prev.map(r => r.id));
-            const newRecords = remoteEgg.filter((r: any) => !existingIds.has(r.id));
-            return [...newRecords, ...prev];
-          });
+        // Authoritative Direct Hydration from Server Database
+        if (Array.isArray(remoteEgg)) {
+          setRawEggRecords(remoteEgg);
+          localStorage.setItem(`${LOCAL_STORAGE_KEY}_egg_prod`, JSON.stringify(remoteEgg));
         }
 
         if (Array.isArray(remoteFlocks) && remoteFlocks.length > 0) {
-          setFlocks(prev => {
-            const map = new Map<string, Flock>(prev.map(f => [f.houseNumber, f]));
-            remoteFlocks.forEach((rf: any) => {
-              const existing = map.get(rf.houseNumber);
-              map.set(rf.houseNumber, existing ? { ...existing, ...rf } : rf);
-            });
-            return Array.from(map.values());
-          });
+          setFlocks(remoteFlocks);
+          localStorage.setItem(`${LOCAL_STORAGE_KEY}_flocks`, JSON.stringify(remoteFlocks));
         }
 
-        if (Array.isArray(remoteFeed) && remoteFeed.length > 0) {
-          setFeedConsumptionRecords(prev => {
-            const existingIds = new Set(prev.map(r => r.id));
-            const newRecords = remoteFeed.filter((r: any) => !existingIds.has(r.id));
-            return [...newRecords, ...prev];
-          });
+        if (Array.isArray(remoteFeed)) {
+          setFeedConsumptionRecords(remoteFeed);
+          localStorage.setItem(`${LOCAL_STORAGE_KEY}_feed_cons`, JSON.stringify(remoteFeed));
         }
 
-        if (Array.isArray(remoteStock) && remoteStock.length > 0) {
-          setFeedStockEntries(prev => {
-            const existingIds = new Set(prev.map(s => s.id));
-            const newRecords = remoteStock.filter((s: any) => !existingIds.has(s.id));
-            return [...newRecords, ...prev];
-          });
+        if (Array.isArray(remoteStock)) {
+          setFeedStockEntries(remoteStock);
+          localStorage.setItem(`${LOCAL_STORAGE_KEY}_feed_stock`, JSON.stringify(remoteStock));
         }
 
-        if (Array.isArray(remoteDepletions) && remoteDepletions.length > 0) {
-          setDepletions(prev => {
-            const existingIds = new Set(prev.map(r => r.id));
-            const newRecords = remoteDepletions.filter((r: any) => !existingIds.has(r.id));
-            return [...newRecords, ...prev];
-          });
+        if (Array.isArray(remoteDepletions)) {
+          setDepletions(remoteDepletions);
+          localStorage.setItem(`${LOCAL_STORAGE_KEY}_depletions`, JSON.stringify(remoteDepletions));
         }
 
-        if (Array.isArray(remoteTransfers) && remoteTransfers.length > 0) {
-          setTransfers(prev => {
-            const existingIds = new Set(prev.map(t => t.id));
-            const newRecords = remoteTransfers.filter((t: any) => !existingIds.has(t.id));
-            return [...newRecords, ...prev];
-          });
+        if (Array.isArray(remoteTransfers)) {
+          setTransfers(remoteTransfers);
+          localStorage.setItem(`${LOCAL_STORAGE_KEY}_transfers`, JSON.stringify(remoteTransfers));
         }
 
         if (Array.isArray(remoteProducts) && remoteProducts.length > 0) {
-          setMedProducts(prev => {
-            const map = new Map<string, MedProduct>(prev.map(p => [p.id, p]));
-            remoteProducts.forEach((p: any) => {
-              if (p && p.id) {
-                map.set(p.id, { ...(map.get(p.id) || {}), ...p });
-              }
-            });
-            return Array.from(map.values());
-          });
+          setMedProducts(remoteProducts);
+          localStorage.setItem(`${LOCAL_STORAGE_KEY}_med_products`, JSON.stringify(remoteProducts));
         }
 
-        if (Array.isArray(remoteMedStock) && remoteMedStock.length > 0) {
-          setMedStockLogs(prev => {
-            const existingIds = new Set(prev.map(s => s.id));
-            const newRecords = remoteMedStock.filter((s: any) => !existingIds.has(s.id));
-            return [...newRecords, ...prev];
-          });
+        if (Array.isArray(remoteMedStock)) {
+          setMedStockLogs(remoteMedStock);
+          localStorage.setItem(`${LOCAL_STORAGE_KEY}_med_stock`, JSON.stringify(remoteMedStock));
         }
 
-        if (Array.isArray(remoteMed) && remoteMed.length > 0) {
-          setMedAdministrations(prev => {
-            const existingIds = new Set(prev.map(r => r.id));
-            const newRecords = remoteMed.filter((r: any) => !existingIds.has(r.id));
-            return [...newRecords, ...prev];
-          });
+        if (Array.isArray(remoteMed)) {
+          setMedAdministrations(remoteMed);
+          localStorage.setItem(`${LOCAL_STORAGE_KEY}_med_admin`, JSON.stringify(remoteMed));
         }
 
-        if (Array.isArray(remoteWeights) && remoteWeights.length > 0) {
-          setBodyWeights(prev => {
-            const existingIds = new Set(prev.map(r => r.id));
-            const newRecords = remoteWeights.filter((r: any) => !existingIds.has(r.id));
-            return [...newRecords, ...prev];
-          });
+        if (Array.isArray(remoteWeights)) {
+          setBodyWeights(remoteWeights);
+          localStorage.setItem(`${LOCAL_STORAGE_KEY}_body_weights`, JSON.stringify(remoteWeights));
         }
 
-        if (Array.isArray(remoteBio) && remoteBio.length > 0) {
-          setBiosecurityLogs(prev => {
-            const existingIds = new Set(prev.map(r => `${r.requirementId}_${r.date}`));
-            const newRecords = remoteBio.filter((r: any) => !existingIds.has(`${r.requirementId}_${r.date}`));
-            return [...newRecords, ...prev];
-          });
+        if (Array.isArray(remoteBio)) {
+          setBiosecurityLogs(remoteBio);
+          localStorage.setItem(`${LOCAL_STORAGE_KEY}_bio_logs`, JSON.stringify(remoteBio));
         }
 
         if (Array.isArray(remoteBioReqs) && remoteBioReqs.length > 0) {
-          setBiosecurityRequirements(prev => {
-            const map = new Map<string, BiosecurityRequirement>(prev.map(r => [r.id, r]));
-            remoteBioReqs.forEach((r: any) => {
-              if (r && r.id) {
-                map.set(r.id, { ...(map.get(r.id) || {}), ...r });
-              }
-            });
-            return Array.from(map.values());
-          });
+          setBiosecurityRequirements(remoteBioReqs);
+          localStorage.setItem(`${LOCAL_STORAGE_KEY}_bio_reqs`, JSON.stringify(remoteBioReqs));
         }
 
         if (remoteBioSummaries) {
           if (Array.isArray(remoteBioSummaries)) {
-            setBiosecuritySummaries(prev => {
-              const next = { ...prev };
-              remoteBioSummaries.forEach((s: any) => {
-                if (s && (s.date || s.id)) {
-                  const d = String(s.date || s.id);
-                  next[d] = { ...(next[d] || {}), ...s, date: d };
-                }
-              });
-              return next;
+            const next: Record<string, BiosecurityDailySummary> = {};
+            remoteBioSummaries.forEach((s: any) => {
+              if (s && (s.date || s.id)) {
+                const d = String(s.date || s.id);
+                next[d] = { ...s, date: d };
+              }
             });
+            setBiosecuritySummaries(next);
+            localStorage.setItem(`${LOCAL_STORAGE_KEY}_bio_summaries`, JSON.stringify(next));
           } else if (typeof remoteBioSummaries === 'object') {
-            setBiosecuritySummaries(prev => ({
-              ...prev,
-              ...(remoteBioSummaries as Record<string, BiosecurityDailySummary>)
-            }));
+            setBiosecuritySummaries(remoteBioSummaries as Record<string, BiosecurityDailySummary>);
+            localStorage.setItem(`${LOCAL_STORAGE_KEY}_bio_summaries`, JSON.stringify(remoteBioSummaries));
           }
         }
 
-        if (Array.isArray(remoteWeeklyWeights) && remoteWeeklyWeights.length > 0) {
-          setWeeklyEggWeights(prev => {
-            const existingIds = new Set(prev.map(w => w.id));
-            const newRecords = remoteWeeklyWeights.filter((w: any) => !existingIds.has(w.id));
-            return [...newRecords, ...prev];
-          });
+        if (Array.isArray(remoteWeeklyWeights)) {
+          setWeeklyEggWeights(remoteWeeklyWeights);
+          localStorage.setItem(`${LOCAL_STORAGE_KEY}_weekly_egg_weights`, JSON.stringify(remoteWeeklyWeights));
         }
 
-        if (Array.isArray(remoteDeliveries) && remoteDeliveries.length > 0) {
-          setDeliveries(prev => {
-            const existingIds = new Set(prev.map(d => d.id || d.esrrrNumber));
-            const newRecords = remoteDeliveries.filter((d: any) => !existingIds.has(d.id || d.esrrrNumber));
-            return [...newRecords, ...prev];
-          });
+        if (Array.isArray(remoteDeliveries)) {
+          setDeliveries(remoteDeliveries);
+          localStorage.setItem(`${LOCAL_STORAGE_KEY}_deliveries`, JSON.stringify(remoteDeliveries));
         }
 
         if (Array.isArray(remoteUsers) && remoteUsers.length > 0) {
-          setUsers(prev => {
-            const map = new Map<string, UserAccount>(prev.map(u => [u.username.toLowerCase(), u]));
-            remoteUsers.forEach((ru: any) => {
-              if (ru && ru.username) {
-                const key = ru.username.toLowerCase();
-                const existing = map.get(key);
-                map.set(key, existing ? { ...existing, ...ru } : ru);
-              }
-            });
-            return Array.from(map.values());
-          });
+          setUsers(remoteUsers);
+          localStorage.setItem(`${LOCAL_STORAGE_KEY}_users`, JSON.stringify(remoteUsers));
         }
 
         // Hydrate and merge Farm Profile and Standards
         const profileSource = remoteProfile || res.farmProfile;
         if (profileSource && typeof profileSource === 'object' && ('name' in profileSource || 'address' in profileSource)) {
-          setFarmProfile(prev => ({
-            ...prev,
-            ...profileSource,
-            standardVaccinationProgram: Array.isArray(profileSource.standardVaccinationProgram) && profileSource.standardVaccinationProgram.length > 0
-              ? profileSource.standardVaccinationProgram
-              : prev.standardVaccinationProgram,
-            standardFeedGuide: Array.isArray(profileSource.standardFeedGuide) && profileSource.standardFeedGuide.length > 0
-              ? profileSource.standardFeedGuide
-              : prev.standardFeedGuide,
-            standardHenday: Array.isArray(profileSource.standardHenday) && profileSource.standardHenday.length > 0
-              ? profileSource.standardHenday
-              : prev.standardHenday,
-            standardBodyWeights: Array.isArray(profileSource.standardBodyWeights) && profileSource.standardBodyWeights.length > 0
-              ? profileSource.standardBodyWeights
-              : prev.standardBodyWeights,
-            standardEggWeights: Array.isArray(profileSource.standardEggWeights) && profileSource.standardEggWeights.length > 0
-              ? profileSource.standardEggWeights
-              : prev.standardEggWeights,
-          }));
+          setFarmProfile(prev => {
+            const updated = {
+              ...prev,
+              ...profileSource,
+              standardVaccinationProgram: Array.isArray(profileSource.standardVaccinationProgram) && profileSource.standardVaccinationProgram.length > 0
+                ? profileSource.standardVaccinationProgram
+                : prev.standardVaccinationProgram,
+              standardFeedGuide: Array.isArray(profileSource.standardFeedGuide) && profileSource.standardFeedGuide.length > 0
+                ? profileSource.standardFeedGuide
+                : prev.standardFeedGuide,
+              standardHenday: Array.isArray(profileSource.standardHenday) && profileSource.standardHenday.length > 0
+                ? profileSource.standardHenday
+                : prev.standardHenday,
+              standardBodyWeights: Array.isArray(profileSource.standardBodyWeights) && profileSource.standardBodyWeights.length > 0
+                ? profileSource.standardBodyWeights
+                : prev.standardBodyWeights,
+              standardEggWeights: Array.isArray(profileSource.standardEggWeights) && profileSource.standardEggWeights.length > 0
+                ? profileSource.standardEggWeights
+                : prev.standardEggWeights,
+            };
+            localStorage.setItem(`${LOCAL_STORAGE_KEY}_profile`, JSON.stringify(updated));
+            return updated;
+          });
         }
 
         const standardsSource = remoteStandards || res.standards;
