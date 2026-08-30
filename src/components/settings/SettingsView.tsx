@@ -1070,7 +1070,7 @@ export const SettingsView: React.FC = () => {
                   <ul className="text-xs text-forest-900 space-y-1 list-disc list-inside">
                     <li><strong>Login / Register Gate:</strong> New users are directed to the authentication screen first before accessing any farm records.</li>
                     <li><strong>Role Scoping:</strong> Flockmen and Egg Collectors only see their assigned houses on mobile screens.</li>
-                    <li><strong>Offline Sync:</strong> Caches seamlessly in IndexedDB so farm data is never lost during connectivity blackouts.</li>
+                    <li><strong>RTU Central Database:</strong> All devices and accounts connect live to the single central database in real time with continuous multi-device sync.</li>
                   </ul>
                 </div>
 

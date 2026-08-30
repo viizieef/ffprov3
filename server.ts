@@ -8,7 +8,9 @@ import {
   deleteMongoDoc, 
   syncAllToMongo, 
   pullAllFromMongo, 
-  getMongoDb 
+  getMongoDb,
+  registerDeviceHeartbeat,
+  incrementRtuRevision
 } from './server/mongodb.js';
 
 dotenv.config();
@@ -28,14 +30,36 @@ async function startServer() {
     const mongoStatus = await getMongoStatus();
     res.json({
       status: 'ok',
-      service: 'FarmFlow Pro Enterprise API',
+      service: 'FarmFlow Pro Enterprise API (RTU Mode)',
       timestamp: new Date().toISOString(),
       database: {
         engine: 'MongoDB',
         connected: mongoStatus.connected,
         dbName: mongoStatus.dbName,
+        rtuRevision: mongoStatus.rtuRevision,
+        activeDevicesCount: mongoStatus.activeDevicesCount,
       },
     });
+  });
+
+  // RTU Heartbeat & Telemetry (Rapid multi-device sync check)
+  app.get('/api/rtu/heartbeat', (req, res) => {
+    const deviceId = String(req.query.deviceId || req.headers['x-device-id'] || 'device_anonymous');
+    const telemetry = registerDeviceHeartbeat(deviceId);
+    res.json({
+      status: 'active',
+      mode: 'RTU_DIRECT_DATABASE',
+      revision: telemetry.revision,
+      lastModified: telemetry.lastModified,
+      activeDevices: telemetry.activeDevices,
+      timestamp: new Date().toISOString(),
+    });
+  });
+
+  // RTU Manual Trigger / Broadcast
+  app.post('/api/rtu/broadcast', (_req, res) => {
+    const newRev = incrementRtuRevision();
+    res.json({ success: true, revision: newRev, timestamp: new Date().toISOString() });
   });
 
   // MongoDB Status & Health

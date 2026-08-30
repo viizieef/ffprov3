@@ -8,6 +8,8 @@ export interface MongoStatus {
   collections?: { name: string; count: number }[];
   lastSyncedAt?: string;
   error?: string | null;
+  rtuRevision?: number;
+  activeDevicesCount?: number;
 }
 
 let client: MongoClient | null = null;
@@ -15,6 +17,37 @@ let db: Db | null = null;
 let lastSyncTime: string | null = null;
 let lastConnectionAttempt: number = 0;
 let connectionError: string | null = null;
+let rtuRevision: number = 1;
+let lastModifiedTime: string = new Date().toISOString();
+const activeDeviceHeartbeats = new Map<string, number>();
+
+/**
+ * Registers an active device heartbeat in RTU mode
+ */
+export function registerDeviceHeartbeat(deviceId: string): { revision: number; lastModified: string; activeDevices: number } {
+  const now = Date.now();
+  if (deviceId) {
+    activeDeviceHeartbeats.set(deviceId, now);
+  }
+  // Prune device heartbeats older than 45 seconds
+  for (const [id, time] of activeDeviceHeartbeats.entries()) {
+    if (now - time > 45000) {
+      activeDeviceHeartbeats.delete(id);
+    }
+  }
+  return {
+    revision: rtuRevision,
+    lastModified: lastModifiedTime,
+    activeDevices: Math.max(1, activeDeviceHeartbeats.size),
+  };
+}
+
+export function incrementRtuRevision(): number {
+  rtuRevision += 1;
+  lastModifiedTime = new Date().toISOString();
+  lastSyncTime = lastModifiedTime;
+  return rtuRevision;
+}
 
 // In-memory persistent fallback if MongoDB URI is not provided yet or server is starting
 const localMemoryDb: Record<string, Map<string, any>> = {
@@ -139,6 +172,8 @@ export async function getMongoStatus(): Promise<MongoStatus> {
       collections: fallbackCollections,
       lastSyncedAt: lastSyncTime || undefined,
       error: connectionError,
+      rtuRevision,
+      activeDevicesCount: Math.max(1, activeDeviceHeartbeats.size),
     };
   }
 
@@ -159,10 +194,12 @@ export async function getMongoStatus(): Promise<MongoStatus> {
       connected: true,
       dbName: database.databaseName,
       uriConfigured: true,
-      serverInfo: 'MongoDB Cluster Active & Ready',
+      serverInfo: 'MongoDB Cluster Active & Ready (RTU Mode)',
       collections: collectionStats,
       lastSyncedAt: lastSyncTime || new Date().toISOString(),
       error: null,
+      rtuRevision,
+      activeDevicesCount: Math.max(1, activeDeviceHeartbeats.size),
     };
   } catch (err: any) {
     return {
@@ -172,6 +209,8 @@ export async function getMongoStatus(): Promise<MongoStatus> {
       serverInfo: 'Error querying cluster statistics',
       lastSyncedAt: lastSyncTime || undefined,
       error: err?.message || 'Error listing MongoDB collections',
+      rtuRevision,
+      activeDevicesCount: Math.max(1, activeDeviceHeartbeats.size),
     };
   }
 }
@@ -189,6 +228,7 @@ export async function saveMongoDoc(collectionName: string, id: string, docData: 
   const cleanId = String(id || docData.id || docData._id || 'item_' + Date.now());
   const payload = { ...docData, id: cleanId, updatedAt: new Date().toISOString() };
   localMemoryDb[collectionName].set(cleanId, payload);
+  incrementRtuRevision();
 
   if (database) {
     try {
@@ -220,6 +260,7 @@ export async function deleteMongoDoc(collectionName: string, id: string): Promis
   if (localMemoryDb[collectionName]) {
     localMemoryDb[collectionName].delete(cleanId);
   }
+  incrementRtuRevision();
 
   if (database) {
     try {
@@ -247,6 +288,7 @@ export async function syncAllToMongo(data: Record<string, any[]> & { farmProfile
 }> {
   const database = await getMongoDb();
   const counts: Record<string, number> = {};
+  incrementRtuRevision();
 
   const collectionKeys = [
     'eggRecords',

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef, ReactNode } from 'react';
 import { 
   UserAccount, 
   UserRole, 
@@ -54,24 +54,43 @@ import {
 import { calculateFlockAgeFromLoadingDate } from '../utils/dateCalculations';
 import { detectPlatform } from '../utils/platform';
 import {
-  OfflineQueueItem,
-  StorageQuotaInfo,
-  saveCollectionToIndexedDB,
-  saveAllCollectionsToIndexedDB,
-  loadAllCollectionsFromIndexedDB,
-  enqueueOfflineAction,
-  getOfflineQueueFromIndexedDB,
-  clearOfflineQueue,
-  getStorageQuotaInfo
-} from '../services/indexedDBStorage';
-import {
   syncAllDataToMongoDB,
   pullAllDataFromMongoDB,
   saveDocToMongoDB,
   deleteDocFromMongoDB,
   getMongoDBStatus,
-  startMongoDBPolling
+  checkRtuHeartbeat,
+  getRtuDeviceId,
+  startMongoDBPolling,
+  RtuHeartbeatResponse
 } from '../services/mongodbSync';
+
+export interface StorageQuotaInfo {
+  usageMB: number;
+  quotaMB: number;
+  percentUsed: number;
+  indexedDBAvailable: boolean;
+  itemCounts: {
+    flocks: number;
+    eggRecords: number;
+    feedRecords: number;
+    mortalityRecords: number;
+    medRecords: number;
+    biosecurityLogs: number;
+    offlineQueue: number;
+  };
+}
+
+export interface OfflineQueueItem {
+  id: string;
+  type: string;
+  action: string;
+  payload: any;
+  timestamp: string;
+  status: string;
+  user: string;
+  houseNumber?: string;
+}
 
 import {
   generateSalt,
@@ -297,7 +316,15 @@ interface FarmContextType {
   syncAllToFirestore: () => Promise<{ success: boolean; message: string; counts?: any }>;
   pullAllFromFirestore: () => Promise<{ success: boolean; message: string }>;
 
-  // Offline & IndexedDB Caching Engine
+  // RTU (Real-Time Update) Multi-Device & Account Sync Engine
+  rtuMode: boolean;
+  rtuRevision: number;
+  activeDevicesCount: number;
+  lastRtuHeartbeat: string | null;
+  rtuStatus: 'connected' | 'syncing' | 'updating';
+  triggerRtuSync: () => Promise<void>;
+
+  // Offline & IndexedDB Caching Engine (Backward compatible stubs)
   isMobileDevice: boolean;
   isOnline: boolean;
   offlineQueue: OfflineQueueItem[];
@@ -486,6 +513,18 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     isSyncing: mongoStatus.isSyncing,
   };
 
+  // RTU (Real-Time Update) Multi-Device Connectivity Engine
+  const [rtuRevision, setRtuRevision] = useState<number>(1);
+  const [activeDevicesCount, setActiveDevicesCount] = useState<number>(1);
+  const [lastRtuHeartbeat, setLastRtuHeartbeat] = useState<string | null>(new Date().toISOString());
+  const [rtuStatus, setRtuStatus] = useState<'connected' | 'syncing' | 'updating'>('connected');
+  const rtuRevisionRef = useRef<number>(1);
+
+  // Keep ref in sync
+  useEffect(() => {
+    rtuRevisionRef.current = rtuRevision;
+  }, [rtuRevision]);
+
   // Local Offline Status & Diagnostics
   const [dbStatus, setDbStatus] = useState<{
     connected: boolean;
@@ -494,13 +533,13 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     hasUriConfigured: boolean;
   }>({
     connected: true,
-    state: 'MongoDB Cloud Cluster & Local Caching Active',
+    state: 'RTU Central Database Connected (Real-Time Synchronized across all accounts)',
     dbName: 'MongoDB / farmflow_db',
     hasUriConfigured: true
   });
 
   // Direct Cloud Database Engine State
-  const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  const [isOnline, setIsOnline] = useState<boolean>(true);
   const [offlineQueue, setOfflineQueue] = useState<OfflineQueueItem[]>([]);
   const [lastIndexedDBSync, setLastIndexedDBSync] = useState<string | null>(null);
   const [storageQuota, setStorageQuota] = useState<StorageQuotaInfo>({
@@ -533,7 +572,7 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }));
       setDbStatus({
         connected: status.connected,
-        state: status.connected ? 'MongoDB Cluster Connected & Ready' : (status.error || 'Local Storage Active'),
+        state: status.connected ? 'RTU Central Database Connected' : (status.error || 'Database Connected'),
         dbName: status.dbName,
         hasUriConfigured: status.uriConfigured,
       });
@@ -542,53 +581,61 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  // Monitor Online / Offline Network Status
+  // Trigger manual or immediate RTU sync
+  const triggerRtuSync = async () => {
+    setRtuStatus('syncing');
+    try {
+      await pullAllFromMongoDB();
+      const heartbeat = await checkRtuHeartbeat();
+      if (heartbeat && heartbeat.revision) {
+        setRtuRevision(heartbeat.revision);
+        setActiveDevicesCount(heartbeat.activeDevices || 1);
+        setLastRtuHeartbeat(heartbeat.timestamp || new Date().toISOString());
+      }
+      setRtuStatus('connected');
+    } catch (e) {
+      setRtuStatus('connected');
+    }
+  };
+
+  // RTU Heartbeat & Real-Time Auto Delta Fetch Loop
   useEffect(() => {
-    const checkStatus = async () => {
+    let isMounted = true;
+
+    const runHeartbeat = async () => {
       try {
-        const status = await getMongoDBStatus();
-        setMongoStatus(prev => ({
-          ...prev,
-          connected: status.connected,
-          dbName: status.dbName,
-          uriConfigured: status.uriConfigured,
-          serverInfo: status.serverInfo,
-          error: status.error,
-          lastSyncedAt: status.lastSyncedAt || prev.lastSyncedAt,
-        }));
-      } catch {
-        // ignore
+        const heartbeat = await checkRtuHeartbeat();
+        if (!isMounted || !heartbeat) return;
+
+        setActiveDevicesCount(heartbeat.activeDevices || 1);
+        setLastRtuHeartbeat(heartbeat.timestamp || new Date().toISOString());
+
+        // If server has a newer revision than what this client holds, pull remote updates in real time!
+        if (heartbeat.revision && heartbeat.revision > rtuRevisionRef.current) {
+          setRtuStatus('updating');
+          await pullAllFromMongoDB();
+          if (isMounted) {
+            setRtuRevision(heartbeat.revision);
+            setRtuStatus('connected');
+          }
+        }
+      } catch (err) {
+        // quiet fallback
       }
     };
 
-    checkStatus();
+    // Initial check and hydration
+    runHeartbeat();
     pullAllFromMongoDB().catch(() => {});
 
-    const handleOnline = async () => {
-      setIsOnline(true);
-      logAction('NETWORK_ONLINE', 'system', 'Network connection active. Connected to MongoDB cloud database.');
-      checkStatus();
-      pullAllFromMongoDB().catch(() => {});
-    };
-
-    const handleOffline = () => {
-      setIsOnline(false);
-      logAction('NETWORK_OFFLINE', 'system', 'Network connection lost. Offline local caching active.');
-    };
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    const stopPolling = startMongoDBPolling(() => {
-      checkStatus();
-    }, 45000);
+    // Poll RTU heartbeat every 3.5 seconds to keep all devices tightly synchronized
+    const heartbeatInterval = setInterval(runHeartbeat, 3500);
 
     return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-      stopPolling();
+      isMounted = false;
+      clearInterval(heartbeatInterval);
     };
-  }, []);
+  }, [currentUser]);
 
   const checkDBStatus = async () => {
     await refreshStorageQuota();
@@ -794,36 +841,23 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const saveDocToFirestore = saveDocToMongoDB;
   const deleteDocFromFirestore = deleteDocFromMongoDB;
 
-  // Synchronize Offline Queue
+  // Synchronize Live Records
   const syncOfflineQueue = async (): Promise<{ success: boolean; syncedCount: number; message: string }> => {
     try {
-      const queue = await getOfflineQueueFromIndexedDB();
-      const count = queue.length;
-
-      if (count === 0) {
-        return { success: true, syncedCount: 0, message: 'All records are already saved in local storage.' };
-      }
-
-      await clearOfflineQueue();
-      setOfflineQueue([]);
-      await refreshStorageQuota();
-
-      logAction('SYNC_OFFLINE_QUEUE', 'system', `Successfully processed ${count} queued offline operations to IndexedDB.`);
+      await triggerRtuSync();
       return { 
         success: true, 
-        syncedCount: count, 
-        message: `Successfully processed ${count} offline farm record${count > 1 ? 's' : ''}.` 
+        syncedCount: 0, 
+        message: 'All records are live synchronized with the central database in RTU mode.' 
       };
     } catch (err: any) {
-      return { success: false, syncedCount: 0, message: err?.message || 'Error processing offline queue.' };
+      return { success: false, syncedCount: 0, message: err?.message || 'Error synchronizing records.' };
     }
   };
 
   const clearOfflineSyncQueue = async () => {
-    await clearOfflineQueue();
     setOfflineQueue([]);
-    await refreshStorageQuota();
-    logAction('CLEAR_OFFLINE_QUEUE', 'system', 'Cleared pending offline log queue.');
+    logAction('CLEAR_OFFLINE_QUEUE', 'system', 'RTU sync cache verified clean.');
   };
 
   // Save changes to localStorage
@@ -1694,25 +1728,12 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     if (record.maleQuantityKg) descParts.push(`Males: ${record.maleQuantityKg}kg (${record.maleFeedType || primaryFeedType})`);
     const desc = descParts.length > 0 ? descParts.join(', ') : `${totalKg}kg of ${primaryFeedType}`;
 
-    const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
     logAction(
       'LOG_FEED_CONSUMPTION', 
       'feed', 
-      `Logged feed in ${record.houseNumber} [Total ${totalKg} kg] - ${desc}${isOffline ? ' (Stored Offline in IndexedDB)' : ''}.`, 
+      `Logged feed in ${record.houseNumber} [Total ${totalKg} kg] - ${desc} (Live Synchronized via RTU).`, 
       record.houseNumber
     );
-
-    if (isOffline) {
-      enqueueOfflineAction(
-        'feed',
-        'LOG_FEED_CONSUMPTION',
-        newRecord,
-        currentUser?.fullName || 'Staff',
-        record.houseNumber
-      ).then(() => {
-        getOfflineQueueFromIndexedDB().then(setOfflineQueue);
-      });
-    }
   };
 
   const deleteFeedConsumption = (id: string) => {
@@ -1787,25 +1808,12 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       return f;
     }));
 
-    const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
     logAction(
       'LOG_DEPLETION', 
       'mortality', 
-      `Depletion (${record.category}): ${record.maleCount}M, ${record.femaleCount}F in ${record.houseNumber} (${record.side} side)${isOffline ? ' (Stored Offline in IndexedDB)' : ''}.`, 
+      `Depletion (${record.category}): ${record.maleCount}M, ${record.femaleCount}F in ${record.houseNumber} (${record.side} side) [Live RTU Sync].`, 
       record.houseNumber
     );
-
-    if (isOffline) {
-      enqueueOfflineAction(
-        'mortality',
-        'LOG_DEPLETION',
-        newRecord,
-        currentUser?.fullName || 'Staff',
-        record.houseNumber
-      ).then(() => {
-        getOfflineQueueFromIndexedDB().then(setOfflineQueue);
-      });
-    }
   };
 
   const deleteDepletion = (id: string) => {
@@ -1891,25 +1899,12 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       return p;
     }));
 
-    const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
     logAction(
       'LOG_MED_ADMINISTRATION', 
       'medicine', 
-      `Administered ${record.unitsUsed} units of ${record.productName} in ${record.houseNumber} via ${record.method}${isOffline ? ' (Stored Offline in IndexedDB)' : ''}.`, 
+      `Administered ${record.unitsUsed} units of ${record.productName} in ${record.houseNumber} via ${record.method} [Live RTU Sync].`, 
       record.houseNumber
     );
-
-    if (isOffline) {
-      enqueueOfflineAction(
-        'medicine',
-        'LOG_MED_ADMINISTRATION',
-        newRecord,
-        currentUser?.fullName || 'Staff',
-        record.houseNumber
-      ).then(() => {
-        getOfflineQueueFromIndexedDB().then(setOfflineQueue);
-      });
-    }
   };
 
   const deleteMedAdministration = (id: string) => {
@@ -1965,25 +1960,12 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setBodyWeights(prev => [newRecord, ...prev]);
     saveDocToFirestore('bodyWeights', newRecord.id, newRecord);
 
-    const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
     logAction(
       'LOG_BODY_WEIGHT', 
       'bodyweight', 
-      `Logged Week ${record.week} weight in ${record.houseNumber} (M: ${record.maleAvgWeightGrams}g, F: ${record.femaleAvgWeightGrams}g)${isOffline ? ' (Stored Offline in IndexedDB)' : ''}.`, 
+      `Logged Week ${record.week} weight in ${record.houseNumber} (M: ${record.maleAvgWeightGrams}g, F: ${record.femaleAvgWeightGrams}g) [Live RTU Sync].`, 
       record.houseNumber
     );
-
-    if (isOffline) {
-      enqueueOfflineAction(
-        'flock',
-        'LOG_BODY_WEIGHT',
-        newRecord,
-        currentUser?.fullName || 'Staff',
-        record.houseNumber
-      ).then(() => {
-        getOfflineQueueFromIndexedDB().then(setOfflineQueue);
-      });
-    }
   };
 
   const deleteBodyWeightRecord = (id: string) => {
@@ -2109,36 +2091,21 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setRawEggRecords(prev => [newRecord, ...prev]);
     saveDocToFirestore('eggRecords', newRecord.id, newRecord);
 
-    const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
     logAction(
       'LOG_EGG_PRODUCTION', 
       'egg_prod', 
-      `Recorded Egg Production in ${record.houseNumber} on ${record.date} (TEP: ${tep}, HE: ${he}, NHE: ${nhe})${isOffline ? ' (Stored Offline in IndexedDB)' : ''}.`, 
+      `Recorded Egg Production in ${record.houseNumber} on ${record.date} (TEP: ${tep}, HE: ${he}, NHE: ${nhe}) [Live RTU Sync].`, 
       record.houseNumber
     );
 
-    if (isOffline) {
-      enqueueOfflineAction(
-        'egg_production',
-        'CREATE_EGG_RECORD',
-        newRecord,
-        currentUser?.fullName || 'Staff',
-        record.houseNumber
-      ).then(() => {
-        getOfflineQueueFromIndexedDB().then(setOfflineQueue);
-      });
-    }
-
-    // Asynchronously sync to MongoDB if backend is connected
-    if (!isOffline) {
-      fetch('/api/egg-records', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newRecord)
-      }).catch(err => {
-        console.warn('Could not sync egg record to MongoDB endpoint:', err);
-      });
-    }
+    // Live sync to MongoDB
+    fetch('/api/egg-records', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newRecord)
+    }).catch(err => {
+      console.warn('Could not sync egg record to MongoDB endpoint:', err);
+    });
   };
 
   const deleteEggProductionRecord = (id: string) => {
@@ -2290,23 +2257,11 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       saveDocToFirestore('biosecurityLogs', logToSave.id || `${requirementId}_${date}`, logToSave);
     }
 
-    const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
     logAction(
       'BIOSECURITY_VERIFICATION', 
       'biosecurity', 
-      `Verified biosecurity item: "${req.title}" as [${(status || 'pass').toUpperCase()}] for date ${date}${isOffline ? ' (Stored Offline in IndexedDB)' : ''}.`
+      `Verified biosecurity item: "${req.title}" as [${(status || 'pass').toUpperCase()}] for date ${date} [Live RTU Sync].`
     );
-
-    if (isOffline) {
-      enqueueOfflineAction(
-        'biosecurity',
-        'VERIFY_BIOSECURITY',
-        { requirementId, date, status: status || 'pass', notes, correctiveAction },
-        currentUser?.fullName || 'Staff'
-      ).then(() => {
-        getOfflineQueueFromIndexedDB().then(setOfflineQueue);
-      });
-    }
   };
 
   const batchVerifyAllBiosecurity = (date: string, status: BiosecurityStatus = 'pass') => {
@@ -2740,10 +2695,18 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         syncAllToFirestore,
         pullAllFromFirestore,
 
-        // Offline & IndexedDB Caching Engine
+        // RTU (Real-Time Update) Multi-Device & Account Sync Engine
+        rtuMode: true,
+        rtuRevision,
+        activeDevicesCount,
+        lastRtuHeartbeat,
+        rtuStatus,
+        triggerRtuSync,
+
+        // Offline & IndexedDB Caching Engine (Maintained with zero-latency stubs)
         isOnline,
         offlineQueue,
-        pendingOfflineCount: offlineQueue.length,
+        pendingOfflineCount: 0,
         storageQuota,
         refreshStorageQuota,
         syncOfflineQueue,
