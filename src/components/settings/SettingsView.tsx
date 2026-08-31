@@ -786,7 +786,7 @@ export const SettingsView: React.FC = () => {
                     <span>Cross-Platform Standalone App Installation</span>
                   </div>
                   <p className="text-xs text-slate-300 leading-relaxed max-w-xl">
-                    Install FarmFlow Pro directly onto your mobile phone, tablet, or desktop computer. Installed apps launch in full-screen standalone mode and can record eggs and feed offline inside poultry houses.
+                    Install FarmFlow Pro directly onto your mobile phone, tablet, or desktop computer. Installed apps launch in full-screen standalone mode with real-time central database synchronization.
                   </p>
                 </div>
               </div>
@@ -1045,7 +1045,7 @@ export const SettingsView: React.FC = () => {
                 </div>
                 <h4 className="font-extrabold text-sm text-slate-900">Android OS (Chrome / Edge)</h4>
                 <p className="text-xs text-slate-600 leading-relaxed">
-                  Direct 1-tap installation to home screen with native app icon, offline caching, and haptic feedback on keypad touches.
+                  Direct 1-tap installation to home screen with native app icon, live real-time sync, and haptic feedback on keypad touches.
                 </p>
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-xs space-y-1 text-slate-700 font-medium">
                   <div className="flex items-center gap-1.5 text-emerald-800 font-bold text-[11px]">
@@ -1066,7 +1066,7 @@ export const SettingsView: React.FC = () => {
                 </div>
                 <h4 className="font-extrabold text-sm text-slate-900">Apple iOS (iPhone & iPad)</h4>
                 <p className="text-xs text-slate-600 leading-relaxed">
-                  Full standalone app experience with bottom navigation bar, safe-area notched display support, and offline persistence.
+                  Full standalone app experience with bottom navigation bar, safe-area notched display support, and instant central database connection.
                 </p>
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-xs space-y-1 text-slate-700 font-medium">
                   <div className="flex items-center gap-1.5 text-slate-900 font-bold text-[11px]">

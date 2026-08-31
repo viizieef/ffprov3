@@ -41,10 +41,15 @@
     <script type="module" src="./src/main.tsx"></script>
     <script>
       if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js')
-            .then(reg => console.log('FarmFlow Service Worker registered', reg.scope))
-            .catch(err => console.log('Service Worker registration failed:', err));
+        navigator.serviceWorker.getRegistrations().then(registrations => {
+          for (let registration of registrations) {
+            registration.unregister();
+          }
+        });
+      }
+      if ('caches' in window) {
+        caches.keys().then(keys => {
+          keys.forEach(key => caches.delete(key));
         });
       }
     </script>

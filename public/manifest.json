@@ -2,7 +2,7 @@
   "id": "farmflow-pro-poultry-os",
   "name": "FarmFlow Pro - Broiler-Breeder Farm Management",
   "short_name": "FarmFlow Pro",
-  "description": "Biosecure broiler-breeder poultry farm management system with offline capability, egg collection, feed tracking, mortality logs, and multi-device sync.",
+  "description": "Biosecure broiler-breeder poultry farm management system with real-time central database sync, egg collection, feed tracking, mortality logs, and multi-device sync.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

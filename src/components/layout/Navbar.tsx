@@ -55,9 +55,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     getLowStockAlerts, 
     getUpcomingVaccines,
     dbStatus,
-    permissions,
-    isOnline,
-    pendingOfflineCount
+    permissions
   } = useFarm();
 
   const [showRoleDropdown, setShowRoleDropdown] = useState(false);

@@ -77,19 +77,7 @@ export interface StorageQuotaInfo {
     mortalityRecords: number;
     medRecords: number;
     biosecurityLogs: number;
-    offlineQueue: number;
   };
-}
-
-export interface OfflineQueueItem {
-  id: string;
-  type: string;
-  action: string;
-  payload: any;
-  timestamp: string;
-  status: string;
-  user: string;
-  houseNumber?: string;
 }
 
 import {
@@ -325,15 +313,10 @@ interface FarmContextType {
   rtuStatus: 'connected' | 'syncing' | 'updating';
   triggerRtuSync: () => Promise<void>;
 
-  // Offline & Live Sync Engine
+  // Central Database & Storage Sync Engine
   isMobileDevice: boolean;
-  isOnline: boolean;
-  offlineQueue: OfflineQueueItem[];
-  pendingOfflineCount: number;
   storageQuota: StorageQuotaInfo;
   refreshStorageQuota: () => Promise<void>;
-  syncOfflineQueue: () => Promise<{ success: boolean; syncedCount: number; message: string }>;
-  clearOfflineSyncQueue: () => Promise<void>;
   databaseEngine: 'mongodb';
   dbStatus: {
     connected: boolean;
@@ -564,7 +547,7 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     rtuRevisionRef.current = rtuRevision;
   }, [rtuRevision]);
 
-  // Local Offline Status & Diagnostics
+  // Database Status & Diagnostics
   const [dbStatus, setDbStatus] = useState<{
     connected: boolean;
     state: string;
@@ -578,8 +561,6 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   });
 
   // Direct Cloud Database Engine State
-  const [isOnline, setIsOnline] = useState<boolean>(true);
-  const [offlineQueue, setOfflineQueue] = useState<OfflineQueueItem[]>([]);
   const [storageQuota, setStorageQuota] = useState<StorageQuotaInfo>({
     usageMB: 0,
     quotaMB: 0,
@@ -590,8 +571,7 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       feedRecords: 0,
       mortalityRecords: 0,
       medRecords: 0,
-      biosecurityLogs: 0,
-      offlineQueue: 0
+      biosecurityLogs: 0
     }
   });
 
@@ -983,25 +963,6 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const pullAllFromFirestore = pullAllFromMongoDB;
   const saveDocToFirestore = saveDocToMongoDB;
   const deleteDocFromFirestore = deleteDocFromMongoDB;
-
-  // Synchronize Live Records
-  const syncOfflineQueue = async (): Promise<{ success: boolean; syncedCount: number; message: string }> => {
-    try {
-      await triggerRtuSync();
-      return { 
-        success: true, 
-        syncedCount: 0, 
-        message: 'All records are live synchronized with the central database in RTU mode.' 
-      };
-    } catch (err: any) {
-      return { success: false, syncedCount: 0, message: err?.message || 'Error synchronizing records.' };
-    }
-  };
-
-  const clearOfflineSyncQueue = async () => {
-    setOfflineQueue([]);
-    logAction('CLEAR_OFFLINE_QUEUE', 'system', 'RTU sync cache verified clean.');
-  };
 
   // Save changes to localStorage
   useEffect(() => {
@@ -2941,14 +2902,9 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         rtuStatus,
         triggerRtuSync,
 
-        // Offline & Live Sync Engine
-        isOnline,
-        offlineQueue,
-        pendingOfflineCount: 0,
+        // Storage Sync Engine
         storageQuota,
         refreshStorageQuota,
-        syncOfflineQueue,
-        clearOfflineSyncQueue,
 
         permissions
       }}

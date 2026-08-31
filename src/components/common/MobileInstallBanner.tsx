@@ -107,7 +107,7 @@ export const MobileInstallBanner: React.FC = () => {
               <p className="text-[11px] text-slate-300 line-clamp-1 mt-0.5">
                 {isIOS 
                   ? 'Tap Safari Share (📤) > Add to Home Screen'
-                  : 'Fast offline access with native app icon'}
+                  : 'Fast 1-tap access with native app icon'}
               </p>
             </div>
           </div>

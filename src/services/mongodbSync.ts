@@ -12,7 +12,7 @@ export interface MongoSyncStatus {
 }
 
 export interface RtuHeartbeatResponse {
-  status: 'active' | 'offline';
+  status: 'active' | 'standby' | 'disconnected';
   mode: string;
   revision: number;
   lastModified: string;

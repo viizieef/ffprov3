@@ -180,6 +180,8 @@ export function isConnectionOrPoolError(err: any): boolean {
     name.includes('timeout') ||
     name.includes('serverselection') ||
     name.includes('topology') ||
+    name.includes('ssl') ||
+    name.includes('tls') ||
     msg.includes('pool') ||
     msg.includes('timed out') ||
     msg.includes('timeout') ||
@@ -189,7 +191,13 @@ export function isConnectionOrPoolError(err: any): boolean {
     msg.includes('etimedout') ||
     msg.includes('socket') ||
     msg.includes('topology') ||
-    msg.includes('server closed')
+    msg.includes('server closed') ||
+    msg.includes('ssl') ||
+    msg.includes('tls') ||
+    msg.includes('alert') ||
+    msg.includes('handshake') ||
+    msg.includes('openssl') ||
+    msg.includes('certificate')
   );
 }
 
@@ -252,12 +260,13 @@ export async function getMongoDb(forceReconnect = false): Promise<Db | null> {
         socketTimeoutMS: 45000,
         serverSelectionTimeoutMS: 15000,
         heartbeatFrequencyMS: 10000,
-        maxPoolSize: 50,
-        minPoolSize: 0,
+        maxPoolSize: 30,
+        minPoolSize: 1,
         maxIdleTimeMS: 60000,
         waitQueueTimeoutMS: 15000,
         retryWrites: true,
         retryReads: true,
+        family: 4,
       };
 
       // Add ServerApi if using MongoDB Atlas SRV URI
@@ -265,7 +274,7 @@ export async function getMongoDb(forceReconnect = false): Promise<Db | null> {
         mongoClientOptions.serverApi = {
           version: ServerApiVersion.v1,
           strict: false,
-          deprecationErrors: true,
+          deprecationErrors: false,
         };
       }
 
@@ -430,7 +439,7 @@ export async function getMongoStatus(): Promise<MongoStatus> {
       connected: false,
       dbName,
       uriConfigured: isUriConfigured,
-      serverInfo: isUriConfigured ? 'Connecting / Offline' : 'In-Memory / Local Cache Active',
+      serverInfo: isUriConfigured ? 'Connecting / Reconnecting' : 'In-Memory / Local Cache Active',
       collections: fallbackCollections,
       lastSyncedAt: lastSyncTime || undefined,
       error: connectionError,

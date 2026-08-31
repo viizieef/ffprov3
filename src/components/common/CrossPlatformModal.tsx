@@ -115,7 +115,7 @@ export const CrossPlatformModal: React.FC<CrossPlatformModalProps> = ({
     triggerHaptic('light');
     await shareAppData({
       title: `${farmProfile.name || 'FarmFlow Pro'} - Multi-Platform Farm Management`,
-      text: 'Access FarmFlow Pro on Android, iOS, or PC desktop for offline poultry house logging and inventory management.',
+      text: 'Access FarmFlow Pro on Android, iOS, or PC desktop for poultry house logging and inventory management.',
       url: appUrl
     });
   };
@@ -396,7 +396,7 @@ export const CrossPlatformModal: React.FC<CrossPlatformModalProps> = ({
                 <div>
                   <h4 className="font-bold text-emerald-950 text-sm">Android Installation & Native APK Experience</h4>
                   <p className="text-slate-700 text-xs mt-1">
-                    Installs directly to your Android home screen and app drawer as an independent app icon with standalone full-screen view, offline synchronization, and hardware haptics.
+                    Installs directly to your Android home screen and app drawer as an independent app icon with standalone full-screen view, live central synchronization, and hardware haptics.
                   </p>
                 </div>
               </div>
@@ -512,7 +512,7 @@ export const CrossPlatformModal: React.FC<CrossPlatformModalProps> = ({
                     <div>
                       <p className="font-bold text-slate-900">Tap "Add" in Top Right</p>
                       <p className="text-[11px] text-slate-600">
-                        FarmFlow Pro is now installed on your iOS home screen with offline capability!
+                        FarmFlow Pro is now installed on your iOS home screen for instant access!
                       </p>
                     </div>
                   </div>

@@ -111,7 +111,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         await pullAllFromMongoDB();
       }
     } catch {
-      // Offline fallback
+      // Direct pull attempt completed
     }
 
     try {
@@ -370,7 +370,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 </div>
                 <div className="text-[11px]">
                   <p className="font-extrabold text-forest-950">Add to Phone Home Screen</p>
-                  <p className="text-forest-800 text-[10px] hidden sm:inline">Use as a full offline mobile app</p>
+                  <p className="text-forest-800 text-[10px] hidden sm:inline">Fast 1-tap mobile experience</p>
                 </div>
               </div>
               <button
