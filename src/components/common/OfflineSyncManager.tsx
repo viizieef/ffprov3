@@ -33,8 +33,7 @@ export const OfflineSyncManager: React.FC<OfflineSyncManagerProps> = ({ isOpen, 
     syncOfflineQueue, 
     clearOfflineSyncQueue,
     storageQuota,
-    refreshStorageQuota,
-    lastIndexedDBSync
+    refreshStorageQuota
   } = useFarm();
 
   const [isSyncing, setIsSyncing] = useState(false);
@@ -94,7 +93,7 @@ export const OfflineSyncManager: React.FC<OfflineSyncManagerProps> = ({ isOpen, 
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-lg font-bold text-white font-display">Offline Operations & IndexedDB Cache</h2>
+                <h2 className="text-lg font-bold text-white font-display">Offline Operations & Cloud Sync</h2>
                 <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
                   isOnline ? 'bg-emerald-900/60 text-emerald-300 border border-emerald-700' : 'bg-amber-900/60 text-amber-300 border border-amber-700'
                 }`}>
@@ -102,7 +101,7 @@ export const OfflineSyncManager: React.FC<OfflineSyncManagerProps> = ({ isOpen, 
                 </span>
               </div>
               <p className="text-xs text-graphite-300">
-                Service Worker active with native IndexedDB local storage & resilient background queue
+                Central MongoDB live sync with background queue and resilience
               </p>
             </div>
           </div>
@@ -123,7 +122,7 @@ export const OfflineSyncManager: React.FC<OfflineSyncManagerProps> = ({ isOpen, 
               <div>
                 <p className="text-xs font-bold text-amber-900">You are currently operating in Offline Mode</p>
                 <p className="text-xs text-amber-800 mt-0.5">
-                  All egg logs, feed records, mortality, and flockman entries are safely stored in your device's native IndexedDB cache. They will automatically queue and sync once a network connection is re-established.
+                  All egg logs, feed records, mortality, and flockman entries are safely queued locally. They will automatically sync to the central database once a network connection is re-established.
                 </p>
               </div>
             </div>
@@ -144,17 +143,17 @@ export const OfflineSyncManager: React.FC<OfflineSyncManagerProps> = ({ isOpen, 
           <div>
             <h3 className="text-xs font-bold text-graphite-500 uppercase tracking-wider mb-3 flex items-center gap-1.5 font-display">
               <HardDrive className="w-3.5 h-3.5 text-forest-700" />
-              <span>Local Storage & IndexedDB Diagnostics</span>
+              <span>Central Cloud Storage & Sync Diagnostics</span>
             </h3>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div className="bg-graphite-50 p-3.5 rounded-2xl border border-graphite-200/80">
-                <span className="text-[10px] font-bold text-graphite-500 uppercase tracking-wider block">IndexedDB Engine</span>
+                <span className="text-[10px] font-bold text-graphite-500 uppercase tracking-wider block">Database Mode</span>
                 <span className="text-sm font-extrabold text-forest-800 flex items-center gap-1 mt-1">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                  {storageQuota.indexedDBAvailable ? 'Ready / Active' : 'Unavailable'}
+                  MongoDB RTU
                 </span>
-                <span className="text-[10px] text-graphite-400 block mt-0.5">Dual-Tier Persistence</span>
+                <span className="text-[10px] text-graphite-400 block mt-0.5">Direct Cloud Sync</span>
               </div>
 
               <div className="bg-graphite-50 p-3.5 rounded-2xl border border-graphite-200/80">
@@ -168,7 +167,7 @@ export const OfflineSyncManager: React.FC<OfflineSyncManagerProps> = ({ isOpen, 
               </div>
 
               <div className="bg-graphite-50 p-3.5 rounded-2xl border border-graphite-200/80">
-                <span className="text-[10px] font-bold text-graphite-500 uppercase tracking-wider block">Cached Records</span>
+                <span className="text-[10px] font-bold text-graphite-500 uppercase tracking-wider block">Active Records</span>
                 <span className="text-sm font-extrabold text-graphite-900 mt-1 block">
                   {storageQuota.itemCounts.eggRecords + storageQuota.itemCounts.feedRecords + storageQuota.itemCounts.mortalityRecords + storageQuota.itemCounts.biosecurityLogs}
                 </span>
@@ -194,7 +193,7 @@ export const OfflineSyncManager: React.FC<OfflineSyncManagerProps> = ({ isOpen, 
                   <span>Pending Offline Log Queue ({offlineQueue.length})</span>
                 </h3>
                 <p className="text-[11px] text-graphite-500">
-                  Operations entered while without connection, preserved locally in IndexedDB
+                  Operations entered while without connection, preserved for server synchronization
                 </p>
               </div>
 
@@ -259,15 +258,10 @@ export const OfflineSyncManager: React.FC<OfflineSyncManagerProps> = ({ isOpen, 
           <div className="p-4 bg-forest-50/60 rounded-2xl border border-forest-200/80 flex items-start gap-3">
             <Zap className="w-5 h-5 text-forest-700 shrink-0 mt-0.5" />
             <div className="text-xs text-forest-950 space-y-1">
-              <p className="font-bold">Agricultural PWA & Service Worker Technology</p>
+              <p className="font-bold">Agricultural PWA & Central Cloud Architecture</p>
               <p className="text-forest-800 leading-relaxed">
-                FarmFlow Pro utilizes a custom Service Worker cache and multi-tier IndexedDB storage. You can perform full daily farm routines (egg grading, feed allocation, mortality records, and biosecurity checklists) inside remote poultry houses with zero connectivity.
+                FarmFlow Pro connects directly to your central MongoDB database with real-time multi-device sync (RTU). You can perform daily farm routines (egg grading, feed allocation, mortality records, and biosecurity checklists) with full zero-latency responsiveness.
               </p>
-              {lastIndexedDBSync && (
-                <p className="text-[11px] text-forest-600 font-medium pt-1">
-                  Last local IndexedDB sync: {new Date(lastIndexedDBSync).toLocaleString()}
-                </p>
-              )}
             </div>
           </div>
         </div>

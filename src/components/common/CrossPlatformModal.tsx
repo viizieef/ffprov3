@@ -292,7 +292,7 @@ export const CrossPlatformModal: React.FC<CrossPlatformModalProps> = ({
                       <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-forest-900" />
                     </h4>
                     <p className="text-[11px] text-slate-500 mt-0.5">
-                      Safari Add to Home Screen, Safe Area Insets, Full Offline IndexedDB.
+                      Safari Add to Home Screen, Safe Area Insets, Instant Cloud Sync.
                     </p>
                   </div>
                 </div>

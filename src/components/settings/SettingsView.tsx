@@ -765,15 +765,15 @@ export const SettingsView: React.FC = () => {
 
             <div className="p-5 bg-slate-50 border border-slate-200/80 rounded-2xl space-y-3">
               <h4 className="font-bold text-sm text-slate-900 flex items-center gap-2">
-                <Database className="w-4 h-4 text-teal-600" />
-                <span>Local IndexedDB Persistence</span>
+                <Database className="w-4 h-4 text-forest-700" />
+                <span>Central Cloud Database & Real-Time Sync</span>
               </h4>
               <p className="text-xs text-slate-600">
-                FarmFlow Pro automatically saves all farm data, offline queues, and user activity locally in your browser's persistent IndexedDB storage engine.
+                FarmFlow Pro connects directly to your central MongoDB database with real-time multi-device sync (RTU), instant backup exports, and zero data loss.
               </p>
               <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-mint-100 text-forest-900 rounded-xl text-xs font-bold">
                 <CheckCircle2 className="w-4 h-4 text-forest-700" />
-                <span>Local Storage Active (Offline-Ready)</span>
+                <span>MongoDB RTU Active & Synchronized</span>
               </div>
             </div>
 

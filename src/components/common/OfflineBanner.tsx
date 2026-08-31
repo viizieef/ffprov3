@@ -51,7 +51,7 @@ export const OfflineBanner: React.FC = () => {
             </div>
             <p className="text-[11px] text-graphite-300">
               {!isOnline 
-                ? 'Data safely saving to device IndexedDB storage'
+                ? 'Data safely queued for central MongoDB sync'
                 : 'Click to synchronize pending items with server'
               }
             </p>

@@ -15,7 +15,18 @@ export const HouseQuickBar: React.FC<HouseQuickBarProps> = ({
 }) => {
   const { flocks = [], getFlockStats } = useFarm();
 
-  const safeFlocks = Array.isArray(flocks) ? flocks.filter(Boolean) : [];
+  const safeFlocks = React.useMemo(() => {
+    const map = new Map<string, (typeof flocks)[0]>();
+    if (Array.isArray(flocks)) {
+      flocks.forEach((f) => {
+        if (f && f.houseNumber && !map.has(f.houseNumber)) {
+          map.set(f.houseNumber, f);
+        }
+      });
+    }
+    return Array.from(map.values());
+  }, [flocks]);
+
   const houseOptions = safeFlocks.map(f => f.houseNumber).filter(Boolean);
   const currentIndex = houseOptions.indexOf(selectedHouse);
 
