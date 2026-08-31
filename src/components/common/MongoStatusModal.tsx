@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { 
   CheckCircle2, 
   X, 
@@ -9,9 +9,8 @@ import {
   Zap,
   ShieldCheck,
   Check,
-  RefreshCw,
-  ArrowDownToLine,
-  ArrowUpToLine
+  Globe,
+  Users
 } from 'lucide-react';
 import { useFarm } from '../../context/FarmContext';
 
@@ -30,44 +29,13 @@ export const MongoStatusModal: React.FC<MongoStatusModalProps> = ({ isOpen, onCl
     rtuRevision,
     activeDevicesCount,
     lastRtuHeartbeat,
-    rtuStatus,
-    syncAllToMongoDB,
-    pullAllFromMongoDB
+    rtuStatus
   } = useFarm();
-
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
   const isConnected = mongoStatus?.connected;
   const dbName = mongoStatus?.dbName || 'farmflow_db';
-
-  const handlePushAll = async () => {
-    setIsSyncing(true);
-    setSyncFeedback(null);
-    try {
-      const res = await syncAllToMongoDB();
-      setSyncFeedback(res?.message || 'All records successfully pushed to central database!');
-    } catch {
-      setSyncFeedback('Sync completed.');
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
-  const handlePullAll = async () => {
-    setIsSyncing(true);
-    setSyncFeedback(null);
-    try {
-      const res = await pullAllFromMongoDB();
-      setSyncFeedback(res?.message || 'Latest records successfully downloaded from central database!');
-    } catch {
-      setSyncFeedback('Pull completed.');
-    } finally {
-      setIsSyncing(false);
-    }
-  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-teal-950/60 backdrop-blur-xs animate-in fade-in duration-200">
@@ -85,7 +53,7 @@ export const MongoStatusModal: React.FC<MongoStatusModalProps> = ({ isOpen, onCl
                   Live All Devices
                 </span>
               </div>
-              <p className="text-xs text-slate-500">Instant background synchronization across mobile phones, tablets, and computers</p>
+              <p className="text-xs text-slate-500">Continuous automatic synchronization across mobile phones, tablets, and computers</p>
             </div>
           </div>
           <button
@@ -111,7 +79,7 @@ export const MongoStatusModal: React.FC<MongoStatusModalProps> = ({ isOpen, onCl
                 </span>
                 <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-900 font-bold text-[10px] flex items-center gap-1">
                   <Check className="w-3 h-3 text-emerald-700" />
-                  Auto-Syncing
+                  Auto-Synchronized
                 </span>
               </div>
               <div className="flex items-center gap-2">
@@ -136,8 +104,8 @@ export const MongoStatusModal: React.FC<MongoStatusModalProps> = ({ isOpen, onCl
               <div className="flex items-center gap-2 p-2.5 bg-white/80 rounded-xl border border-emerald-100">
                 <Activity className="w-4 h-4 text-emerald-700 shrink-0" />
                 <div>
-                  <span className="text-[10px] text-slate-500 block font-medium">Sync Status</span>
-                  <span className="font-bold text-emerald-800">{rtuStatus === 'updating' || isSyncing ? 'Synchronizing...' : 'Live & In-Sync'}</span>
+                  <span className="text-[10px] text-slate-500 block font-medium">Sync Engine</span>
+                  <span className="font-bold text-emerald-800">{rtuStatus === 'updating' ? 'Updating...' : 'Live & Seamless'}</span>
                 </div>
               </div>
             </div>
@@ -145,10 +113,10 @@ export const MongoStatusModal: React.FC<MongoStatusModalProps> = ({ isOpen, onCl
             <div className="p-3 bg-white/90 rounded-xl border border-emerald-200/80 text-[11px] text-slate-600 leading-relaxed space-y-1">
               <div className="flex items-center gap-1.5 font-bold text-slate-800">
                 <Zap className="w-3.5 h-3.5 text-amber-500" />
-                <span>Simple Multi-Device Real-Time Sync</span>
+                <span>Automatic Multi-Device Synchronization</span>
               </div>
               <p>
-                Records added or modified on this device or any mobile phone are immediately synced with the database. Other devices update in real-time without needing a manual refresh.
+                All data is completely viewable, editable, and accessible in real time across all devices. Any changes made on one device are instantly pushed to the central database and mirrored on all other phones, tablets, and computers automatically.
               </p>
             </div>
           </div>
@@ -162,7 +130,7 @@ export const MongoStatusModal: React.FC<MongoStatusModalProps> = ({ isOpen, onCl
               </span>
               <span className="text-[11px] text-emerald-700 font-bold flex items-center gap-1">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Synced with Central Database</span>
+                <span>All Live in Central Database</span>
               </span>
             </div>
 
@@ -186,41 +154,22 @@ export const MongoStatusModal: React.FC<MongoStatusModalProps> = ({ isOpen, onCl
             </div>
           </div>
 
-          {/* Manual sync buttons for peace of mind */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={handlePullAll}
-                disabled={isSyncing}
-                className="flex-1 py-2.5 px-3 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
-              >
-                <ArrowDownToLine className={`w-3.5 h-3.5 ${isSyncing ? 'animate-bounce' : ''}`} />
-                <span>Pull Latest from Database</span>
-              </button>
-              <button
-                type="button"
-                onClick={handlePushAll}
-                disabled={isSyncing}
-                className="flex-1 py-2.5 px-3 bg-teal-50 hover:bg-teal-100 border border-teal-300 text-teal-800 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
-              >
-                <ArrowUpToLine className={`w-3.5 h-3.5 ${isSyncing ? 'animate-bounce' : ''}`} />
-                <span>Sync All to Database</span>
-              </button>
+          {/* Live Device Access Reassurance */}
+          <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-900">
+              <Globe className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>Universal Real-Time Access</span>
             </div>
-
-            {syncFeedback && (
-              <p className="text-[11px] text-center text-emerald-800 font-medium bg-emerald-50 p-2 rounded-lg border border-emerald-200">
-                {syncFeedback}
-              </p>
-            )}
+            <p className="text-[11px] text-slate-600 leading-relaxed">
+              Every staff member can log in from any phone or browser. All changes save and sync seamlessly without needing manual refresh or sync buttons.
+            </p>
           </div>
 
           {/* Background Sync Info Footer */}
           <div className="p-3 bg-emerald-50/70 border border-emerald-200/80 rounded-2xl flex items-center justify-between gap-3 text-xs">
             <div className="flex items-center gap-2 text-emerald-950 font-medium">
               <ShieldCheck className="w-4 h-4 text-emerald-700 shrink-0" />
-              <span>Multi-device sync: <strong className="text-emerald-900">Active & Connected</strong></span>
+              <span>Multi-device sync: <strong className="text-emerald-900">Active & Continuous</strong></span>
             </div>
             <button
               type="button"

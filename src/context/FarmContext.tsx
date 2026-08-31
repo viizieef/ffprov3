@@ -1095,7 +1095,6 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
     setSystemLogs(prev => [newLog, ...prev.slice(0, 499)]);
     saveDocToFirestore('auditLogs', newLog.id, newLog);
-    saveDocToFirestore('systemLogs', newLog.id, newLog);
   };
 
   // Auth Functions with Cryptographic Security & Lockout Protection
@@ -2524,6 +2523,9 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const newLogs = [...batchLogs, ...existingOtherLogs];
     setBiosecurityLogs(newLogs);
     calculateAndUpdateDailySummary(date, newLogs, biosecurityRequirements);
+    batchLogs.forEach(blog => {
+      saveDocToFirestore('biosecurityLogs', blog.id || `${blog.requirementId}_${blog.date}`, blog);
+    });
     logAction('BIOSECURITY_BATCH_VERIFY', 'biosecurity', `Batch-verified all ${activeReqs.length} active biosecurity requirements as [${status.toUpperCase()}] for date ${date}.`);
   };
 

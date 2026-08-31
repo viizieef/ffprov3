@@ -168,6 +168,32 @@ let connectingPromise: Promise<Db | null> | null = null;
 let indexesEnsured = false;
 
 /**
+ * Checks if an error is related to connection pool clearing, network timeout, or socket failure
+ */
+export function isConnectionOrPoolError(err: any): boolean {
+  if (!err) return false;
+  const msg = (err.message || String(err)).toLowerCase();
+  const name = (err.name || '').toLowerCase();
+  return (
+    name.includes('pool') ||
+    name.includes('network') ||
+    name.includes('timeout') ||
+    name.includes('serverselection') ||
+    name.includes('topology') ||
+    msg.includes('pool') ||
+    msg.includes('timed out') ||
+    msg.includes('timeout') ||
+    msg.includes('connection <monitor>') ||
+    msg.includes('closed') ||
+    msg.includes('econnreset') ||
+    msg.includes('etimedout') ||
+    msg.includes('socket') ||
+    msg.includes('topology') ||
+    msg.includes('server closed')
+  );
+}
+
+/**
  * Resets cached client and database instances on socket or pool failure
  */
 export function resetMongoClient() {
@@ -189,13 +215,17 @@ export function resetMongoClient() {
 /**
  * Initializes or returns the cached MongoDB database instance with single-flight mutex.
  */
-export async function getMongoDb(): Promise<Db | null> {
+export async function getMongoDb(forceReconnect = false): Promise<Db | null> {
   const uri = process.env.MONGODB_URI;
   const dbName = process.env.MONGODB_DB_NAME || 'farmflow_db';
 
   if (!uri) {
     connectionError = 'MONGODB_URI environment variable is not configured. Using high-speed local persistence fallback.';
     return null;
+  }
+
+  if (forceReconnect) {
+    resetMongoClient();
   }
 
   // Reuse existing connected client
@@ -210,7 +240,7 @@ export async function getMongoDb(): Promise<Db | null> {
 
   // Throttle reconnection attempts to prevent connection storming
   const now = Date.now();
-  if (now - lastConnectionAttempt < 6000 && connectionError) {
+  if (!forceReconnect && now - lastConnectionAttempt < 3000 && connectionError) {
     return null;
   }
   lastConnectionAttempt = now;
@@ -218,13 +248,14 @@ export async function getMongoDb(): Promise<Db | null> {
   connectingPromise = (async () => {
     try {
       const mongoClientOptions: any = {
-        connectTimeoutMS: 5000,
-        socketTimeoutMS: 15000,
-        serverSelectionTimeoutMS: 5000,
+        connectTimeoutMS: 15000,
+        socketTimeoutMS: 45000,
+        serverSelectionTimeoutMS: 15000,
         heartbeatFrequencyMS: 10000,
-        maxPoolSize: 20,
+        maxPoolSize: 50,
         minPoolSize: 0,
         maxIdleTimeMS: 60000,
+        waitQueueTimeoutMS: 15000,
         retryWrites: true,
         retryReads: true,
       };
@@ -239,6 +270,24 @@ export async function getMongoDb(): Promise<Db | null> {
       }
 
       const newClient = new MongoClient(uri, mongoClientOptions);
+
+      newClient.on('connectionPoolCleared', () => {
+        if (client === newClient) {
+          resetMongoClient();
+        }
+      });
+
+      newClient.on('serverClosed', () => {
+        if (client === newClient) {
+          resetMongoClient();
+        }
+      });
+
+      newClient.on('error', () => {
+        if (client === newClient) {
+          resetMongoClient();
+        }
+      });
 
       newClient.on('close', () => {
         if (client === newClient) {
@@ -269,6 +318,7 @@ export async function getMongoDb(): Promise<Db | null> {
     } catch (err: any) {
       connectionError = err?.message || 'Failed to connect to MongoDB cluster';
       console.warn(`🍃 [MongoDB] Connection notice: ${connectionError}`);
+      resetMongoClient();
       return null;
     } finally {
       connectingPromise = null;
@@ -436,12 +486,12 @@ export async function getMongoStatus(): Promise<MongoStatus> {
 }
 
 /**
- * Saves or upserts a single document in MongoDB
+ * Saves or upserts a single document in MongoDB with auto-reconnect and retry
  */
 export async function saveMongoDoc(collectionName: string, id: string, docData: any): Promise<{ success: boolean; message: string }> {
-  const database = await getMongoDb();
+  let database = await getMongoDb();
 
-  // Save to memory store first for immediate local reactivity
+  // Save to memory store first for immediate local reactivity and durability
   if (!localMemoryDb[collectionName]) {
     localMemoryDb[collectionName] = new Map();
   }
@@ -461,7 +511,25 @@ export async function saveMongoDoc(collectionName: string, id: string, docData: 
       lastSyncTime = new Date().toISOString();
       return { success: true, message: `Document ${cleanId} upserted in MongoDB ${collectionName}` };
     } catch (err: any) {
-      console.warn(`MongoDB write notice in ${collectionName}:`, err?.message);
+      if (isConnectionOrPoolError(err)) {
+        resetMongoClient();
+        // Retry once with a freshly initialized connection
+        try {
+          const freshDb = await getMongoDb(true);
+          if (freshDb) {
+            const retryCol = freshDb.collection(collectionName);
+            await retryCol.updateOne(
+              { $or: [{ id: cleanId }, { _id: cleanId }] } as any,
+              { $set: { ...payload, _id: cleanId } },
+              { upsert: true }
+            );
+            lastSyncTime = new Date().toISOString();
+            return { success: true, message: `Document ${cleanId} upserted in MongoDB ${collectionName} after auto-reconnect` };
+          }
+        } catch {
+          // Gracefully fallback to memory buffer
+        }
+      }
       return { success: true, message: `Document ${cleanId} saved in local buffer (failover)` };
     }
   }
@@ -471,10 +539,10 @@ export async function saveMongoDoc(collectionName: string, id: string, docData: 
 }
 
 /**
- * Deletes a document from MongoDB
+ * Deletes a document from MongoDB with auto-reconnect and retry
  */
 export async function deleteMongoDoc(collectionName: string, id: string): Promise<{ success: boolean; message: string }> {
-  const database = await getMongoDb();
+  let database = await getMongoDb();
   const cleanId = String(id);
 
   if (localMemoryDb[collectionName]) {
@@ -489,7 +557,21 @@ export async function deleteMongoDoc(collectionName: string, id: string): Promis
       lastSyncTime = new Date().toISOString();
       return { success: true, message: `Document ${cleanId} removed from MongoDB ${collectionName}` };
     } catch (err: any) {
-      console.warn(`MongoDB delete notice in ${collectionName}:`, err?.message);
+      if (isConnectionOrPoolError(err)) {
+        resetMongoClient();
+        // Retry once with a freshly initialized connection
+        try {
+          const freshDb = await getMongoDb(true);
+          if (freshDb) {
+            const retryCol = freshDb.collection(collectionName);
+            await retryCol.deleteOne({ $or: [{ id: cleanId }, { _id: cleanId }] } as any);
+            lastSyncTime = new Date().toISOString();
+            return { success: true, message: `Document ${cleanId} removed from MongoDB ${collectionName} after auto-reconnect` };
+          }
+        } catch {
+          // Gracefully fallback to memory buffer
+        }
+      }
       return { success: true, message: `Document ${cleanId} removed from local buffer (failover)` };
     }
   }
