@@ -109,7 +109,10 @@ export function subscribeToRtuEvents(onEvent: (event: { type: string; revision?:
 export async function getMongoDBStatus(): Promise<MongoSyncStatus> {
   try {
     const res = await fetch('/api/mongodb/status', {
-      headers: { 'Cache-Control': 'no-cache' }
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+      },
     });
     if (!res.ok) {
       throw new Error(`Server returned HTTP ${res.status}`);
@@ -170,7 +173,11 @@ export async function syncAllDataToMongoDB(data: {
   try {
     const res = await fetch('/api/mongodb/sync', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+      },
       body: JSON.stringify(data),
     });
 
@@ -206,7 +213,10 @@ export async function pullAllDataFromMongoDB(): Promise<{
 }> {
   try {
     const res = await fetch('/api/mongodb/pull', {
-      headers: { 'Cache-Control': 'no-cache' }
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+      },
     });
 
     if (!res.ok) {
@@ -232,21 +242,51 @@ export async function pullAllDataFromMongoDB(): Promise<{
 }
 
 /**
- * Saves a single document to MongoDB in real time
+ * Saves a single document to MongoDB in real time and returns the updated document
  */
-export async function saveDocToMongoDB(collectionName: string, id: string | number, data: any): Promise<boolean> {
+export async function saveDocToMongoDB(collectionName: string, id: string | number, data: any): Promise<{ success: boolean; data?: any }> {
   try {
     const cleanId = encodeURIComponent(String(id));
     const cleanCol = encodeURIComponent(collectionName);
     const res = await fetch(`/api/mongodb/doc/${cleanCol}/${cleanId}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+      },
       body: JSON.stringify(data),
     });
-    return res.ok;
+    if (!res.ok) {
+      return { success: false };
+    }
+    const json = await res.json().catch(() => ({}));
+    return { success: true, data: json.data || json.doc || data };
   } catch (e) {
     console.warn(`[MongoDB Sync] Notice saving doc to ${collectionName}:`, e);
-    return false;
+    return { success: false };
+  }
+}
+
+/**
+ * Retrieves a single fresh document from MongoDB in real time
+ */
+export async function getDocFromMongoDB(collectionName: string, id: string | number): Promise<any | null> {
+  try {
+    const cleanId = encodeURIComponent(String(id));
+    const cleanCol = encodeURIComponent(collectionName);
+    const res = await fetch(`/api/mongodb/doc/${cleanCol}/${cleanId}`, {
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+      },
+    });
+    if (!res.ok) return null;
+    const json = await res.json().catch(() => ({}));
+    return json.data || null;
+  } catch (e) {
+    console.warn(`[MongoDB Sync] Notice fetching doc from ${collectionName}:`, e);
+    return null;
   }
 }
 
@@ -259,6 +299,10 @@ export async function deleteDocFromMongoDB(collectionName: string, id: string | 
     const cleanCol = encodeURIComponent(collectionName);
     const res = await fetch(`/api/mongodb/doc/${cleanCol}/${cleanId}`, {
       method: 'DELETE',
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+      },
     });
     return res.ok;
   } catch (e) {

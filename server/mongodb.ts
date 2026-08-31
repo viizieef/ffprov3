@@ -486,9 +486,37 @@ export async function getMongoStatus(): Promise<MongoStatus> {
 }
 
 /**
- * Saves or upserts a single document in MongoDB with auto-reconnect and retry
+ * Retrieves a single document from MongoDB or memory buffer
  */
-export async function saveMongoDoc(collectionName: string, id: string, docData: any): Promise<{ success: boolean; message: string }> {
+export async function getMongoDoc(collectionName: string, id: string): Promise<{ success: boolean; data: any | null; message?: string }> {
+  const cleanId = String(id);
+  const database = await getMongoDb();
+  if (database) {
+    try {
+      const col = database.collection(collectionName);
+      const doc = await col.findOne({ $or: [{ id: cleanId }, { _id: cleanId }] } as any);
+      if (doc) {
+        const { _id, ...rest } = doc;
+        return { success: true, data: { ...rest, id: rest.id || _id || cleanId } };
+      }
+    } catch (e: any) {
+      console.warn(`MongoDB findOne notice for ${collectionName}/${cleanId}:`, e?.message);
+    }
+  }
+  if (localMemoryDb[collectionName] && localMemoryDb[collectionName].has(cleanId)) {
+    return { success: true, data: localMemoryDb[collectionName].get(cleanId) };
+  }
+  return { success: false, data: null, message: 'Document not found' };
+}
+
+/**
+ * Saves or upserts a single document in MongoDB with auto-reconnect, retry, and returns updated data with { new: true, returnDocument: 'after' }
+ */
+export async function saveMongoDoc(
+  collectionName: string,
+  id: string,
+  docData: any
+): Promise<{ success: boolean; message: string; data?: any; doc?: any }> {
   let database = await getMongoDb();
 
   // Save to memory store first for immediate local reactivity and durability
@@ -503,13 +531,27 @@ export async function saveMongoDoc(collectionName: string, id: string, docData: 
   if (database) {
     try {
       const col = database.collection(collectionName);
-      await col.updateOne(
+      // Use findOneAndUpdate with { new: true, returnDocument: 'after', upsert: true } to eliminate stale document returns
+      const result: any = await col.findOneAndUpdate(
         { $or: [{ id: cleanId }, { _id: cleanId }] } as any,
         { $set: { ...payload, _id: cleanId } },
-        { upsert: true }
+        { returnDocument: 'after', returnOriginal: false, upsert: true, new: true } as any
       );
+
+      const rawDoc = result && typeof result === 'object' && 'value' in result ? result.value : result;
+      let finalDoc = payload;
+      if (rawDoc && typeof rawDoc === 'object') {
+        const { _id, ...rest } = rawDoc;
+        finalDoc = { ...payload, ...rest, id: rest.id || _id || cleanId };
+      }
+      localMemoryDb[collectionName].set(cleanId, finalDoc);
       lastSyncTime = new Date().toISOString();
-      return { success: true, message: `Document ${cleanId} upserted in MongoDB ${collectionName}` };
+      return {
+        success: true,
+        message: `Document ${cleanId} upserted in MongoDB ${collectionName}`,
+        data: finalDoc,
+        doc: finalDoc,
+      };
     } catch (err: any) {
       if (isConnectionOrPoolError(err)) {
         resetMongoClient();
@@ -518,24 +560,46 @@ export async function saveMongoDoc(collectionName: string, id: string, docData: 
           const freshDb = await getMongoDb(true);
           if (freshDb) {
             const retryCol = freshDb.collection(collectionName);
-            await retryCol.updateOne(
+            const retryResult: any = await retryCol.findOneAndUpdate(
               { $or: [{ id: cleanId }, { _id: cleanId }] } as any,
               { $set: { ...payload, _id: cleanId } },
-              { upsert: true }
+              { returnDocument: 'after', returnOriginal: false, upsert: true, new: true } as any
             );
+            const retryRawDoc = retryResult && typeof retryResult === 'object' && 'value' in retryResult ? retryResult.value : retryResult;
+            let finalDoc = payload;
+            if (retryRawDoc && typeof retryRawDoc === 'object') {
+              const { _id, ...rest } = retryRawDoc;
+              finalDoc = { ...payload, ...rest, id: rest.id || _id || cleanId };
+            }
+            localMemoryDb[collectionName].set(cleanId, finalDoc);
             lastSyncTime = new Date().toISOString();
-            return { success: true, message: `Document ${cleanId} upserted in MongoDB ${collectionName} after auto-reconnect` };
+            return {
+              success: true,
+              message: `Document ${cleanId} upserted in MongoDB ${collectionName} after auto-reconnect`,
+              data: finalDoc,
+              doc: finalDoc,
+            };
           }
         } catch {
           // Gracefully fallback to memory buffer
         }
       }
-      return { success: true, message: `Document ${cleanId} saved in local buffer (failover)` };
+      return {
+        success: true,
+        message: `Document ${cleanId} saved in local buffer (failover)`,
+        data: payload,
+        doc: payload,
+      };
     }
   }
 
   lastSyncTime = new Date().toISOString();
-  return { success: true, message: `Document ${cleanId} saved in local buffer (awaiting MongoDB connection)` };
+  return {
+    success: true,
+    message: `Document ${cleanId} saved in local buffer (awaiting MongoDB connection)`,
+    data: payload,
+    doc: payload,
+  };
 }
 
 /**
