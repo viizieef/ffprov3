@@ -7,105 +7,8 @@ export interface MongoSyncStatus {
   lastSyncedAt: string | null;
   error?: string | null;
   isSyncing?: boolean;
-  rtuRevision?: number;
-  activeDevicesCount?: number;
 }
 
-export interface RtuHeartbeatResponse {
-  status: 'active' | 'standby' | 'disconnected';
-  mode: string;
-  revision: number;
-  lastModified: string;
-  activeDevices: number;
-  timestamp: string;
-}
-
-/**
- * Gets or creates a persistent device ID for RTU multi-device tracking
- */
-export function getRtuDeviceId(): string {
-  if (typeof window === 'undefined') return 'device_node_server';
-  let deviceId = localStorage.getItem('farmflow_rtu_device_id');
-  if (!deviceId) {
-    const isMobile = /android|iphone|ipad|mobile/i.test(navigator.userAgent);
-    const prefix = isMobile ? 'dev_mobile' : 'dev_workstation';
-    deviceId = `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 6)}`;
-    localStorage.setItem('farmflow_rtu_device_id', deviceId);
-  }
-  return deviceId;
-}
-
-/**
- * Query RTU mode heartbeat to check if server revision has updated
- */
-export async function checkRtuHeartbeat(): Promise<RtuHeartbeatResponse | null> {
-  try {
-    const deviceId = getRtuDeviceId();
-    const res = await fetch(`/api/rtu/heartbeat?deviceId=${encodeURIComponent(deviceId)}`, {
-      headers: {
-        'Cache-Control': 'no-cache',
-        'x-device-id': deviceId,
-      },
-    });
-    if (!res.ok) return null;
-    return await res.json();
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Subscribes to real-time live push events via SSE
- */
-export function subscribeToRtuEvents(onEvent: (event: { type: string; revision?: number; collection?: string; id?: string }) => void): () => void {
-  if (typeof window === 'undefined' || typeof EventSource === 'undefined') {
-    return () => {};
-  }
-
-  let eventSource: EventSource | null = null;
-  let isClosed = false;
-
-  const connect = () => {
-    if (isClosed) return;
-    try {
-      const deviceId = getRtuDeviceId();
-      eventSource = new EventSource(`/api/rtu/events?deviceId=${encodeURIComponent(deviceId)}`);
-
-      eventSource.onmessage = (e) => {
-        try {
-          const data = JSON.parse(e.data);
-          onEvent(data);
-        } catch {
-          // ignore non-json
-        }
-      };
-
-      eventSource.onerror = () => {
-        if (eventSource) {
-          eventSource.close();
-          eventSource = null;
-        }
-        if (!isClosed) {
-          setTimeout(connect, 3000);
-        }
-      };
-    } catch {
-      if (!isClosed) {
-        setTimeout(connect, 4000);
-      }
-    }
-  };
-
-  connect();
-
-  return () => {
-    isClosed = true;
-    if (eventSource) {
-      eventSource.close();
-      eventSource = null;
-    }
-  };
-}
 export async function getMongoDBStatus(): Promise<MongoSyncStatus> {
   try {
     const res = await fetch('/api/mongodb/status', {
@@ -126,8 +29,6 @@ export async function getMongoDBStatus(): Promise<MongoSyncStatus> {
       collections: data.collections || [],
       lastSyncedAt: data.lastSyncedAt || null,
       error: data.error || null,
-      rtuRevision: data.rtuRevision,
-      activeDevicesCount: data.activeDevicesCount,
     };
   } catch (err: any) {
     return {
@@ -138,8 +39,6 @@ export async function getMongoDBStatus(): Promise<MongoSyncStatus> {
       collections: [],
       lastSyncedAt: null,
       error: err?.message || 'Failed to reach API server',
-      rtuRevision: 0,
-      activeDevicesCount: 1,
     };
   }
 }

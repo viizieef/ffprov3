@@ -25,11 +25,7 @@ export const MongoStatusModal: React.FC<MongoStatusModalProps> = ({ isOpen, onCl
     flocks, 
     feedConsumptionRecords, 
     depletions, 
-    mongoStatus,
-    rtuRevision,
-    activeDevicesCount,
-    lastRtuHeartbeat,
-    rtuStatus
+    mongoStatus
   } = useFarm();
 
   if (!isOpen) return null;
@@ -48,12 +44,12 @@ export const MongoStatusModal: React.FC<MongoStatusModalProps> = ({ isOpen, onCl
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="font-extrabold text-slate-900 text-base">Multi-Device Central Database Sync</h3>
+                <h3 className="font-extrabold text-slate-900 text-base">Central Database Sync</h3>
                 <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-extrabold rounded-md uppercase tracking-wider">
-                  Live All Devices
+                  Live Connected
                 </span>
               </div>
-              <p className="text-xs text-slate-500">Continuous automatic synchronization across mobile phones, tablets, and computers</p>
+              <p className="text-xs text-slate-500">Continuous automatic synchronization across all workstations and mobile devices</p>
             </div>
           </div>
           <button
@@ -66,7 +62,7 @@ export const MongoStatusModal: React.FC<MongoStatusModalProps> = ({ isOpen, onCl
 
         {/* Body */}
         <div className="p-6 space-y-5">
-          {/* RTU Connection Banner */}
+          {/* Connection Banner */}
           <div className="p-4 bg-gradient-to-br from-emerald-500/10 via-teal-500/10 to-emerald-600/5 border border-emerald-300/80 rounded-2xl space-y-3">
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <div className="flex items-center gap-2">
@@ -83,9 +79,6 @@ export const MongoStatusModal: React.FC<MongoStatusModalProps> = ({ isOpen, onCl
                 </span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-900 font-bold text-[10px] flex items-center gap-1 font-mono">
-                  Rev: #{rtuRevision || 1}
-                </span>
                 <span className="px-2 py-0.5 rounded-full bg-teal-100 text-teal-900 font-bold text-[10px] font-mono">
                   DB: {dbName}
                 </span>
@@ -96,16 +89,16 @@ export const MongoStatusModal: React.FC<MongoStatusModalProps> = ({ isOpen, onCl
               <div className="flex items-center gap-2 p-2.5 bg-white/80 rounded-xl border border-emerald-100">
                 <Smartphone className="w-4 h-4 text-teal-700 shrink-0" />
                 <div>
-                  <span className="text-[10px] text-slate-500 block font-medium">Connected Devices</span>
-                  <span className="font-bold text-slate-900">{activeDevicesCount || 1} Active Device{activeDevicesCount > 1 ? 's' : ''}</span>
+                  <span className="text-[10px] text-slate-500 block font-medium">Database Host</span>
+                  <span className="font-bold text-slate-900">MongoDB Central Cluster</span>
                 </div>
               </div>
 
               <div className="flex items-center gap-2 p-2.5 bg-white/80 rounded-xl border border-emerald-100">
                 <Activity className="w-4 h-4 text-emerald-700 shrink-0" />
                 <div>
-                  <span className="text-[10px] text-slate-500 block font-medium">Sync Engine</span>
-                  <span className="font-bold text-emerald-800">{rtuStatus === 'updating' ? 'Updating...' : 'Live & Seamless'}</span>
+                  <span className="text-[10px] text-slate-500 block font-medium">Sync Status</span>
+                  <span className="font-bold text-emerald-800">Live & Synchronized</span>
                 </div>
               </div>
             </div>
@@ -113,10 +106,10 @@ export const MongoStatusModal: React.FC<MongoStatusModalProps> = ({ isOpen, onCl
             <div className="p-3 bg-white/90 rounded-xl border border-emerald-200/80 text-[11px] text-slate-600 leading-relaxed space-y-1">
               <div className="flex items-center gap-1.5 font-bold text-slate-800">
                 <Zap className="w-3.5 h-3.5 text-amber-500" />
-                <span>Automatic Multi-Device Synchronization</span>
+                <span>Automatic Database Persistence</span>
               </div>
               <p>
-                All data is completely viewable, editable, and accessible in real time across all devices. Any changes made on one device are instantly pushed to the central database and mirrored on all other phones, tablets, and computers automatically.
+                All data is completely viewable, editable, and saved in real time to the central database. Changes made on any device are automatically synchronized to the cluster.
               </p>
             </div>
           </div>
@@ -184,7 +177,7 @@ export const MongoStatusModal: React.FC<MongoStatusModalProps> = ({ isOpen, onCl
         {/* Footer */}
         <div className="px-6 py-3.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
           <span>Target DB: {dbName}</span>
-          <span>Last Heartbeat: {lastRtuHeartbeat ? new Date(lastRtuHeartbeat).toLocaleTimeString() : 'Active'}</span>
+          <span>Status: {isConnected ? 'Online & Synchronized' : 'Local Standby'}</span>
         </div>
       </div>
     </div>

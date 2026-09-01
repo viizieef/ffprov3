@@ -59,11 +59,7 @@ import {
   saveDocToMongoDB,
   deleteDocFromMongoDB,
   getMongoDBStatus,
-  checkRtuHeartbeat,
-  getRtuDeviceId,
-  startMongoDBPolling,
-  subscribeToRtuEvents,
-  RtuHeartbeatResponse
+  startMongoDBPolling
 } from '../services/mongodbSync';
 
 export interface StorageQuotaInfo {
@@ -305,14 +301,6 @@ interface FarmContextType {
   syncAllToFirestore: () => Promise<{ success: boolean; message: string; counts?: any }>;
   pullAllFromFirestore: () => Promise<{ success: boolean; message: string }>;
 
-  // RTU (Real-Time Update) Multi-Device & Account Sync Engine
-  rtuMode: boolean;
-  rtuRevision: number;
-  activeDevicesCount: number;
-  lastRtuHeartbeat: string | null;
-  rtuStatus: 'connected' | 'syncing' | 'updating';
-  triggerRtuSync: () => Promise<void>;
-
   // Central Database & Storage Sync Engine
   isMobileDevice: boolean;
   storageQuota: StorageQuotaInfo;
@@ -535,18 +523,6 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     isSyncing: mongoStatus.isSyncing,
   };
 
-  // RTU (Real-Time Update) Multi-Device Connectivity Engine
-  const [rtuRevision, setRtuRevision] = useState<number>(1);
-  const [activeDevicesCount, setActiveDevicesCount] = useState<number>(1);
-  const [lastRtuHeartbeat, setLastRtuHeartbeat] = useState<string | null>(new Date().toISOString());
-  const [rtuStatus, setRtuStatus] = useState<'connected' | 'syncing' | 'updating'>('connected');
-  const rtuRevisionRef = useRef<number>(1);
-
-  // Keep ref in sync
-  useEffect(() => {
-    rtuRevisionRef.current = rtuRevision;
-  }, [rtuRevision]);
-
   // Database Status & Diagnostics
   const [dbStatus, setDbStatus] = useState<{
     connected: boolean;
@@ -555,7 +531,7 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     hasUriConfigured: boolean;
   }>({
     connected: true,
-    state: 'RTU Central Database Connected (Real-Time Synchronized across all accounts)',
+    state: 'Central Database Connected',
     dbName: 'MongoDB / farmflow_db',
     hasUriConfigured: true
   });
@@ -589,7 +565,7 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }));
       setDbStatus({
         connected: status.connected,
-        state: status.connected ? 'RTU Central Database Connected' : (status.error || 'Database Connected'),
+        state: status.connected ? 'Central Database Connected' : (status.error || 'Database Connected'),
         dbName: status.dbName,
         hasUriConfigured: status.uriConfigured,
       });
@@ -598,79 +574,33 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  // Trigger manual or immediate RTU sync
-  const triggerRtuSync = async () => {
-    setRtuStatus('syncing');
-    try {
-      await pullAllFromMongoDB();
-      const heartbeat = await checkRtuHeartbeat();
-      if (heartbeat && heartbeat.revision) {
-        setRtuRevision(heartbeat.revision);
-        setActiveDevicesCount(heartbeat.activeDevices || 1);
-        setLastRtuHeartbeat(heartbeat.timestamp || new Date().toISOString());
-      }
-      setRtuStatus('connected');
-    } catch (e) {
-      setRtuStatus('connected');
-    }
-  };
-
-  // Real-Time Bi-Directional Hydration Engine (Zero user intervention, live push & pull)
+  // Periodic MongoDB sync check
   useEffect(() => {
     let isMounted = true;
 
-    const pullUpdates = async (newRevision?: number) => {
+    const pullUpdates = async () => {
       if (!isMounted) return;
-      setRtuStatus('updating');
       try {
         await pullAllFromMongoDB();
-        if (isMounted) {
-          if (newRevision && newRevision > rtuRevisionRef.current) {
-            setRtuRevision(newRevision);
-          }
-          setRtuStatus('connected');
-        }
-      } catch {
-        if (isMounted) setRtuStatus('connected');
-      }
-    };
-
-    const runHeartbeat = async () => {
-      try {
-        const heartbeat = await checkRtuHeartbeat();
-        if (!isMounted || !heartbeat) return;
-
-        setActiveDevicesCount(heartbeat.activeDevices || 1);
-        setLastRtuHeartbeat(heartbeat.timestamp || new Date().toISOString());
-
-        // If server has a newer revision than what this client holds, pull remote updates in real time!
-        if (heartbeat.revision && heartbeat.revision > rtuRevisionRef.current) {
-          await pullUpdates(heartbeat.revision);
-        }
       } catch {
         // quiet fallback
       }
     };
 
-    // Initial silent check and background hydration
-    runHeartbeat();
+    // Initial background hydration
     pullUpdates().catch(() => {});
 
-    // 1. Instantaneous Server-Sent Events stream for instant push hydration across all devices
-    const unsubscribeSse = subscribeToRtuEvents((event) => {
-      if (!isMounted) return;
-      if (event.type === 'DATA_CHANGED' && event.revision && event.revision > rtuRevisionRef.current) {
-        pullUpdates(event.revision);
+    // Periodic polling every 30 seconds
+    const stopPolling = startMongoDBPolling(() => {
+      if (isMounted) {
+        pullUpdates().catch(() => {});
+        refreshStorageQuota().catch(() => {});
       }
-    });
-
-    // 2. Continuous fallback telemetry loop (every 3 seconds) for network resilience
-    const heartbeatInterval = setInterval(runHeartbeat, 3000);
+    }, 30000);
 
     return () => {
       isMounted = false;
-      unsubscribeSse();
-      clearInterval(heartbeatInterval);
+      stopPolling();
     };
   }, []);
 
@@ -1871,7 +1801,7 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     logAction(
       'LOG_FEED_CONSUMPTION', 
       'feed', 
-      `Logged feed in ${record.houseNumber} [Total ${totalKg} kg] - ${desc} (Live Synchronized via RTU).`, 
+      `Logged feed in ${record.houseNumber} [Total ${totalKg} kg] - ${desc}.`, 
       record.houseNumber
     );
   };
@@ -1953,7 +1883,7 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     logAction(
       'LOG_DEPLETION', 
       'mortality', 
-      `Depletion (${record.category}): ${record.maleCount}M, ${record.femaleCount}F in ${record.houseNumber} (${record.side} side) [Live RTU Sync].`, 
+      `Depletion (${record.category}): ${record.maleCount}M, ${record.femaleCount}F in ${record.houseNumber} (${record.side} side).`, 
       record.houseNumber
     );
   };
@@ -2064,7 +1994,7 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     logAction(
       'LOG_MED_ADMINISTRATION', 
       'medicine', 
-      `Administered ${record.unitsUsed} units of ${record.productName} in ${record.houseNumber} via ${record.method} [Live RTU Sync].`, 
+      `Administered ${record.unitsUsed} units of ${record.productName} in ${record.houseNumber} via ${record.method}.`, 
       record.houseNumber
     );
   };
@@ -2137,7 +2067,7 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     logAction(
       'LOG_BODY_WEIGHT', 
       'bodyweight', 
-      `Logged Week ${record.week} weight in ${record.houseNumber} (M: ${record.maleAvgWeightGrams}g, F: ${record.femaleAvgWeightGrams}g) [Live RTU Sync].`, 
+      `Logged Week ${record.week} weight in ${record.houseNumber} (M: ${record.maleAvgWeightGrams}g, F: ${record.femaleAvgWeightGrams}g).`, 
       record.houseNumber
     );
   };
@@ -2268,7 +2198,7 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     logAction(
       'LOG_EGG_PRODUCTION', 
       'egg_prod', 
-      `Recorded Egg Production in ${record.houseNumber} on ${record.date} (TEP: ${tep}, HE: ${he}, NHE: ${nhe}) [Live RTU Sync].`, 
+      `Recorded Egg Production in ${record.houseNumber} on ${record.date} (TEP: ${tep}, HE: ${he}, NHE: ${nhe}).`, 
       record.houseNumber
     );
   };
@@ -2285,7 +2215,7 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }));
     if (updatedDoc) {
       saveDocToFirestore('eggRecords', id, updatedDoc);
-      logAction('UPDATE_EGG_PRODUCTION', 'egg_prod', `Updated egg production record ID ${id} [Live RTU Sync].`);
+      logAction('UPDATE_EGG_PRODUCTION', 'egg_prod', `Updated egg production record ID ${id}.`);
     }
   };
 
@@ -2454,7 +2384,7 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     logAction(
       'BIOSECURITY_VERIFICATION', 
       'biosecurity', 
-      `Verified biosecurity item: "${req.title}" as [${(status || 'pass').toUpperCase()}] for date ${date} [Live RTU Sync].`
+      `Verified biosecurity item: "${req.title}" as [${(status || 'pass').toUpperCase()}] for date ${date}.`
     );
   };
 
@@ -2893,14 +2823,6 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         firestoreStatus,
         syncAllToFirestore,
         pullAllFromFirestore,
-
-        // RTU (Real-Time Update) Multi-Device & Account Sync Engine
-        rtuMode: true,
-        rtuRevision,
-        activeDevicesCount,
-        lastRtuHeartbeat,
-        rtuStatus,
-        triggerRtuSync,
 
         // Storage Sync Engine
         storageQuota,

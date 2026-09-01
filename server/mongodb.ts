@@ -1,4 +1,4 @@
-import { MongoClient, Db, ServerApiVersion } from 'mongodb';
+import { MongoClient, Db } from 'mongodb';
 
 export interface MongoStatus {
   connected: boolean;
@@ -8,8 +8,6 @@ export interface MongoStatus {
   collections?: { name: string; count: number }[];
   lastSyncedAt?: string;
   error?: string | null;
-  rtuRevision?: number;
-  activeDevicesCount?: number;
 }
 
 let client: MongoClient | null = null;
@@ -17,153 +15,6 @@ let db: Db | null = null;
 let lastSyncTime: string | null = null;
 let lastConnectionAttempt: number = 0;
 let connectionError: string | null = null;
-let rtuRevision: number = 1;
-let lastModifiedTime: string = new Date().toISOString();
-const activeDeviceHeartbeats = new Map<string, number>();
-const sseClients = new Set<(event: { type: string; revision: number; collection?: string; id?: string; timestamp: string }) => void>();
-
-/**
- * Registers an SSE client for instantaneous real-time change events
- */
-export function registerSseClient(callback: (event: { type: string; revision: number; collection?: string; id?: string; timestamp: string }) => void): () => void {
-  sseClients.add(callback);
-  return () => {
-    sseClients.delete(callback);
-  };
-}
-
-/**
- * Broadcasts real-time delta updates to all connected browser clients instantly
- */
-export function broadcastChangeEvent(collection?: string, id?: string) {
-  const payload = {
-    type: 'DATA_CHANGED',
-    revision: rtuRevision,
-    collection,
-    id,
-    timestamp: lastModifiedTime,
-  };
-  sseClients.forEach(cb => {
-    try {
-      cb(payload);
-    } catch {
-      // ignore broken client pipe
-    }
-  });
-}
-
-/**
- * Registers an active device heartbeat in RTU mode
- */
-export function registerDeviceHeartbeat(deviceId: string): { revision: number; lastModified: string; activeDevices: number } {
-  const now = Date.now();
-  if (deviceId) {
-    activeDeviceHeartbeats.set(deviceId, now);
-  }
-  // Prune device heartbeats older than 45 seconds
-  for (const [id, time] of activeDeviceHeartbeats.entries()) {
-    if (now - time > 45000) {
-      activeDeviceHeartbeats.delete(id);
-    }
-  }
-  return {
-    revision: rtuRevision,
-    lastModified: lastModifiedTime,
-    activeDevices: Math.max(1, activeDeviceHeartbeats.size),
-  };
-}
-
-export function incrementRtuRevision(collection?: string, id?: string): number {
-  rtuRevision += 1;
-  lastModifiedTime = new Date().toISOString();
-  lastSyncTime = lastModifiedTime;
-  broadcastChangeEvent(collection, id);
-  return rtuRevision;
-}
-
-// Baseline initial seeds import for server fallback persistence
-import {
-  INITIAL_FARM_PROFILE,
-  INITIAL_FLOCKS,
-  INITIAL_FEED_STOCK,
-  INITIAL_FEED_CONSUMPTION,
-  INITIAL_MED_PRODUCTS,
-  INITIAL_MED_ADMIN,
-  INITIAL_BODY_WEIGHTS,
-  INITIAL_EGG_PRODUCTION,
-  INITIAL_WEEKLY_EGG_WEIGHTS,
-  INITIAL_USERS,
-  INITIAL_DEPLETIONS,
-  INITIAL_BIRD_TRANSFERS,
-  INITIAL_BIOSECURITY_REQUIREMENTS,
-  INITIAL_BIOSECURITY_LOGS,
-  INITIAL_DELIVERIES,
-  INITIAL_SYSTEM_LOGS
-} from '../src/data/initialData.js';
-
-// In-memory persistent fallback if MongoDB URI is not provided yet or server is starting
-const localMemoryDb: Record<string, Map<string, any>> = {
-  eggRecords: new Map(),
-  flocks: new Map(),
-  feedRecords: new Map(),
-  feedStock: new Map(),
-  depletions: new Map(),
-  transfers: new Map(),
-  medProducts: new Map(),
-  medStockLogs: new Map(),
-  medAdmins: new Map(),
-  bodyWeights: new Map(),
-  biosecurityLogs: new Map(),
-  biosecurityRequirements: new Map(),
-  biosecuritySummaries: new Map(),
-  weeklyEggWeights: new Map(),
-  deliveries: new Map(),
-  users: new Map(),
-  farmProfile: new Map(),
-  auditLogs: new Map(),
-  systemLogs: new Map(),
-  settings: new Map(),
-  standards: new Map(),
-};
-
-/**
- * Prepopulates local memory fallback with baseline records
- */
-function initializeServerSeed() {
-  INITIAL_FLOCKS.forEach(f => localMemoryDb.flocks.set(f.houseNumber, f));
-  INITIAL_EGG_PRODUCTION.forEach(e => localMemoryDb.eggRecords.set(e.id, e));
-  INITIAL_FEED_CONSUMPTION.forEach(f => localMemoryDb.feedRecords.set(f.id, f));
-  INITIAL_FEED_STOCK.forEach(s => localMemoryDb.feedStock.set(s.id, s));
-  INITIAL_DEPLETIONS.forEach(d => localMemoryDb.depletions.set(d.id, d));
-  INITIAL_BIRD_TRANSFERS.forEach(t => localMemoryDb.transfers.set(t.id, t));
-  INITIAL_MED_PRODUCTS.forEach(p => localMemoryDb.medProducts.set(p.id, p));
-  INITIAL_MED_ADMIN.forEach(m => localMemoryDb.medAdmins.set(m.id, m));
-  INITIAL_BODY_WEIGHTS.forEach(b => localMemoryDb.bodyWeights.set(b.id, b));
-  INITIAL_BIOSECURITY_REQUIREMENTS.forEach(r => localMemoryDb.biosecurityRequirements.set(r.id, r));
-  INITIAL_BIOSECURITY_LOGS.forEach(l => localMemoryDb.biosecurityLogs.set(`${l.requirementId}_${l.date}`, l));
-  INITIAL_WEEKLY_EGG_WEIGHTS.forEach(w => localMemoryDb.weeklyEggWeights.set(w.id, w));
-  INITIAL_DELIVERIES.forEach(d => localMemoryDb.deliveries.set(d.id, d));
-  INITIAL_USERS.forEach(u => localMemoryDb.users.set(u.username.toLowerCase(), u));
-  localMemoryDb.farmProfile.set('profile', INITIAL_FARM_PROFILE);
-  INITIAL_SYSTEM_LOGS.forEach(l => localMemoryDb.systemLogs.set(l.id, l));
-  localMemoryDb.standards.set('breed_standards', {
-    standardVaccinationProgram: INITIAL_FARM_PROFILE.standardVaccinationProgram,
-    standardFeedGuide: INITIAL_FARM_PROFILE.standardFeedGuide,
-    standardHenday: INITIAL_FARM_PROFILE.standardHenday,
-    standardBodyWeights: INITIAL_FARM_PROFILE.standardBodyWeights,
-    standardEggWeights: INITIAL_FARM_PROFILE.standardEggWeights,
-  });
-  localMemoryDb.settings.set('global_settings', {
-    currency: INITIAL_FARM_PROFILE.currency,
-    facilityHousesCount: INITIAL_FARM_PROFILE.facilityHousesCount,
-    totalBirdCapacity: INITIAL_FARM_PROFILE.totalBirdCapacity,
-    dailyEggCapacity: INITIAL_FARM_PROFILE.dailyEggCapacity,
-    farmOverviewNotes: INITIAL_FARM_PROFILE.farmOverviewNotes,
-  });
-}
-
-initializeServerSeed();
-
 let connectingPromise: Promise<Db | null> | null = null;
 let indexesEnsured = false;
 
@@ -228,7 +79,7 @@ export async function getMongoDb(forceReconnect = false): Promise<Db | null> {
   const dbName = process.env.MONGODB_DB_NAME || 'farmflow_db';
 
   if (!uri) {
-    connectionError = 'MONGODB_URI environment variable is not configured. Using high-speed local persistence fallback.';
+    connectionError = 'MONGODB_URI environment variable is not configured.';
     return null;
   }
 
@@ -260,43 +111,16 @@ export async function getMongoDb(forceReconnect = false): Promise<Db | null> {
         socketTimeoutMS: 45000,
         serverSelectionTimeoutMS: 15000,
         heartbeatFrequencyMS: 10000,
-        maxPoolSize: 30,
+        maxPoolSize: 20,
         minPoolSize: 1,
-        maxIdleTimeMS: 60000,
+        maxIdleTimeMS: 30000,
         waitQueueTimeoutMS: 15000,
         retryWrites: true,
         retryReads: true,
         family: 4,
       };
 
-      // Add ServerApi if using MongoDB Atlas SRV URI
-      if (uri.startsWith('mongodb+srv://') || uri.includes('mongodb.net')) {
-        mongoClientOptions.serverApi = {
-          version: ServerApiVersion.v1,
-          strict: false,
-          deprecationErrors: false,
-        };
-      }
-
       const newClient = new MongoClient(uri, mongoClientOptions);
-
-      newClient.on('connectionPoolCleared', () => {
-        if (client === newClient) {
-          resetMongoClient();
-        }
-      });
-
-      newClient.on('serverClosed', () => {
-        if (client === newClient) {
-          resetMongoClient();
-        }
-      });
-
-      newClient.on('error', () => {
-        if (client === newClient) {
-          resetMongoClient();
-        }
-      });
 
       newClient.on('close', () => {
         if (client === newClient) {
@@ -316,17 +140,18 @@ export async function getMongoDb(forceReconnect = false): Promise<Db | null> {
       connectionError = null;
       console.log(`🍃 [MongoDB] Successfully connected to MongoDB database "${dbName}"`);
 
-      // Ensure indexes and initial baseline seed once per connection lifecycle
+      // Ensure indexes asynchronously
       if (!indexesEnsured) {
         indexesEnsured = true;
-        ensureMongoIndexes(db).catch(() => {});
-        seedInitialDataToMongo(db).catch(() => {});
+        ensureMongoIndexes(testDb).catch(() => {});
       }
 
       return db;
     } catch (err: any) {
       connectionError = err?.message || 'Failed to connect to MongoDB cluster';
-      console.warn(`🍃 [MongoDB] Connection notice: ${connectionError}`);
+      if (process.env.NODE_ENV !== 'production' || !isConnectionOrPoolError(err)) {
+        console.warn(`🍃 [MongoDB] Connection notice: ${connectionError}`);
+      }
       resetMongoClient();
       return null;
     } finally {
@@ -360,65 +185,6 @@ async function ensureMongoIndexes(database: Db) {
 }
 
 /**
- * Seeds baseline records into MongoDB if database is empty so all connecting devices have data
- */
-async function seedInitialDataToMongo(database: Db) {
-  try {
-    if (!client || !db) return;
-    const flockCount = await database.collection('flocks').countDocuments({}, { maxTimeMS: 4000 });
-    if (flockCount === 0) {
-      console.log('🍃 [MongoDB] Seeding baseline farm data to MongoDB cluster for multi-device synchronization...');
-      const bulkOps: Promise<any>[] = [];
-      if (INITIAL_FLOCKS.length > 0) {
-        bulkOps.push(database.collection('flocks').insertMany(INITIAL_FLOCKS.map(f => ({ ...f, _id: f.houseNumber })) as any).catch(() => {}));
-      }
-      if (INITIAL_EGG_PRODUCTION.length > 0) {
-        bulkOps.push(database.collection('eggRecords').insertMany(INITIAL_EGG_PRODUCTION.map(e => ({ ...e, _id: e.id })) as any).catch(() => {}));
-      }
-      if (INITIAL_USERS.length > 0) {
-        bulkOps.push(database.collection('users').insertMany(INITIAL_USERS.map(u => ({ ...u, _id: u.username.toLowerCase() })) as any).catch(() => {}));
-      }
-      if (INITIAL_FEED_STOCK.length > 0) {
-        bulkOps.push(database.collection('feedStock').insertMany(INITIAL_FEED_STOCK.map(s => ({ ...s, _id: s.id })) as any).catch(() => {}));
-      }
-      if (INITIAL_FEED_CONSUMPTION.length > 0) {
-        bulkOps.push(database.collection('feedRecords').insertMany(INITIAL_FEED_CONSUMPTION.map(f => ({ ...f, _id: f.id })) as any).catch(() => {}));
-      }
-      if (INITIAL_DEPLETIONS.length > 0) {
-        bulkOps.push(database.collection('depletions').insertMany(INITIAL_DEPLETIONS.map(d => ({ ...d, _id: d.id })) as any).catch(() => {}));
-      }
-      if (INITIAL_MED_PRODUCTS.length > 0) {
-        bulkOps.push(database.collection('medProducts').insertMany(INITIAL_MED_PRODUCTS.map(p => ({ ...p, _id: p.id })) as any).catch(() => {}));
-      }
-      if (INITIAL_MED_ADMIN.length > 0) {
-        bulkOps.push(database.collection('medAdmins').insertMany(INITIAL_MED_ADMIN.map(m => ({ ...m, _id: m.id })) as any).catch(() => {}));
-      }
-      if (INITIAL_BODY_WEIGHTS.length > 0) {
-        bulkOps.push(database.collection('bodyWeights').insertMany(INITIAL_BODY_WEIGHTS.map(b => ({ ...b, _id: b.id })) as any).catch(() => {}));
-      }
-      if (INITIAL_BIOSECURITY_REQUIREMENTS.length > 0) {
-        bulkOps.push(database.collection('biosecurityRequirements').insertMany(INITIAL_BIOSECURITY_REQUIREMENTS.map(r => ({ ...r, _id: r.id })) as any).catch(() => {}));
-      }
-      if (INITIAL_BIOSECURITY_LOGS.length > 0) {
-        bulkOps.push(database.collection('biosecurityLogs').insertMany(INITIAL_BIOSECURITY_LOGS.map(l => ({ ...l, _id: `${l.requirementId}_${l.date}` })) as any).catch(() => {}));
-      }
-      if (INITIAL_DELIVERIES.length > 0) {
-        bulkOps.push(database.collection('deliveries').insertMany(INITIAL_DELIVERIES.map(d => ({ ...d, _id: d.id })) as any).catch(() => {}));
-      }
-      bulkOps.push(database.collection('farmProfile').updateOne(
-        { _id: 'profile' } as any,
-        { $set: { ...INITIAL_FARM_PROFILE, _id: 'profile', updatedAt: new Date().toISOString() } },
-        { upsert: true }
-      ).catch(() => {}));
-      await Promise.allSettled(bulkOps);
-      console.log('🍃 [MongoDB] Baseline farm data seeded successfully.');
-    }
-  } catch (err: any) {
-    console.warn('🍃 [MongoDB] Notice checking baseline seeding:', err?.message);
-  }
-}
-
-/**
  * Returns real-time MongoDB health, connection status and collection statistics
  */
 export async function getMongoStatus(): Promise<MongoStatus> {
@@ -429,22 +195,14 @@ export async function getMongoStatus(): Promise<MongoStatus> {
   const database = await getMongoDb();
 
   if (!database) {
-    // Return status with memory fallback stats
-    const fallbackCollections = Object.keys(localMemoryDb).map((col) => ({
-      name: col,
-      count: localMemoryDb[col].size,
-    }));
-
     return {
       connected: false,
       dbName,
       uriConfigured: isUriConfigured,
-      serverInfo: isUriConfigured ? 'Connecting / Reconnecting' : 'In-Memory / Local Cache Active',
-      collections: fallbackCollections,
+      serverInfo: isUriConfigured ? 'Connecting / Reconnecting to cluster' : 'MONGODB_URI not configured',
+      collections: [],
       lastSyncedAt: lastSyncTime || undefined,
-      error: connectionError,
-      rtuRevision,
-      activeDevicesCount: Math.max(1, activeDeviceHeartbeats.size),
+      error: connectionError || (isUriConfigured ? 'MongoDB is not connected' : 'MONGODB_URI environment variable is not configured'),
     };
   }
 
@@ -465,191 +223,171 @@ export async function getMongoStatus(): Promise<MongoStatus> {
       connected: true,
       dbName: database.databaseName,
       uriConfigured: true,
-      serverInfo: 'MongoDB Production Cluster Active & Ready (RTU Mode)',
+      serverInfo: 'MongoDB Production Cluster Active & Ready',
       collections: collectionStats,
       lastSyncedAt: lastSyncTime || new Date().toISOString(),
       error: null,
-      rtuRevision,
-      activeDevicesCount: Math.max(1, activeDeviceHeartbeats.size),
     };
   } catch (err: any) {
     connectionError = err?.message || 'Error querying cluster statistics';
     
-    const fallbackCollections = Object.keys(localMemoryDb).map((col) => ({
-      name: col,
-      count: localMemoryDb[col].size,
-    }));
-
     return {
       connected: false,
       dbName,
       uriConfigured: isUriConfigured,
-      serverInfo: 'Operating with server memory buffer (MongoDB auto-reconnecting)',
-      collections: fallbackCollections,
+      serverInfo: 'Error communicating with MongoDB cluster',
+      collections: [],
       lastSyncedAt: lastSyncTime || undefined,
       error: connectionError,
-      rtuRevision,
-      activeDevicesCount: Math.max(1, activeDeviceHeartbeats.size),
     };
   }
 }
 
 /**
- * Retrieves a single document from MongoDB or memory buffer
+ * Retrieves a single document from MongoDB
  */
 export async function getMongoDoc(collectionName: string, id: string): Promise<{ success: boolean; data: any | null; message?: string }> {
   const cleanId = String(id);
   const database = await getMongoDb();
-  if (database) {
-    try {
-      const col = database.collection(collectionName);
-      const doc = await col.findOne({ $or: [{ id: cleanId }, { _id: cleanId }] } as any);
-      if (doc) {
-        const { _id, ...rest } = doc;
-        return { success: true, data: { ...rest, id: rest.id || _id || cleanId } };
-      }
-    } catch (e: any) {
-      console.warn(`MongoDB findOne notice for ${collectionName}/${cleanId}:`, e?.message);
+  if (!database) {
+    return { success: false, data: null, message: connectionError || 'MongoDB is not connected' };
+  }
+
+  try {
+    const col = database.collection(collectionName);
+    const doc = await col.findOne({ $or: [{ id: cleanId }, { _id: cleanId }] } as any);
+    if (doc) {
+      const { _id, ...rest } = doc;
+      return { success: true, data: { ...rest, id: rest.id || _id || cleanId } };
     }
+    return { success: false, data: null, message: 'Document not found' };
+  } catch (e: any) {
+    console.warn(`MongoDB findOne notice for ${collectionName}/${cleanId}:`, e?.message);
+    return { success: false, data: null, message: e?.message || 'Error querying document' };
   }
-  if (localMemoryDb[collectionName] && localMemoryDb[collectionName].has(cleanId)) {
-    return { success: true, data: localMemoryDb[collectionName].get(cleanId) };
-  }
-  return { success: false, data: null, message: 'Document not found' };
 }
 
 /**
- * Saves or upserts a single document in MongoDB with auto-reconnect, retry, and returns updated data with { new: true, returnDocument: 'after' }
+ * Saves or upserts a single document directly in MongoDB with auto-reconnect and retry
  */
 export async function saveMongoDoc(
   collectionName: string,
   id: string,
   docData: any
 ): Promise<{ success: boolean; message: string; data?: any; doc?: any }> {
-  let database = await getMongoDb();
-
-  // Save to memory store first for immediate local reactivity and durability
-  if (!localMemoryDb[collectionName]) {
-    localMemoryDb[collectionName] = new Map();
-  }
+  const database = await getMongoDb();
   const cleanId = String(id || docData.id || docData._id || 'item_' + Date.now());
   const payload = { ...docData, id: cleanId, updatedAt: new Date().toISOString() };
-  localMemoryDb[collectionName].set(cleanId, payload);
-  incrementRtuRevision(collectionName, cleanId);
 
-  if (database) {
-    try {
-      const col = database.collection(collectionName);
-      // Use findOneAndUpdate with { new: true, returnDocument: 'after', upsert: true } to eliminate stale document returns
-      const result: any = await col.findOneAndUpdate(
-        { $or: [{ id: cleanId }, { _id: cleanId }] } as any,
-        { $set: { ...payload, _id: cleanId } },
-        { returnDocument: 'after', returnOriginal: false, upsert: true, new: true } as any
-      );
-
-      const rawDoc = result && typeof result === 'object' && 'value' in result ? result.value : result;
-      let finalDoc = payload;
-      if (rawDoc && typeof rawDoc === 'object') {
-        const { _id, ...rest } = rawDoc;
-        finalDoc = { ...payload, ...rest, id: rest.id || _id || cleanId };
-      }
-      localMemoryDb[collectionName].set(cleanId, finalDoc);
-      lastSyncTime = new Date().toISOString();
-      return {
-        success: true,
-        message: `Document ${cleanId} upserted in MongoDB ${collectionName}`,
-        data: finalDoc,
-        doc: finalDoc,
-      };
-    } catch (err: any) {
-      if (isConnectionOrPoolError(err)) {
-        resetMongoClient();
-        // Retry once with a freshly initialized connection
-        try {
-          const freshDb = await getMongoDb(true);
-          if (freshDb) {
-            const retryCol = freshDb.collection(collectionName);
-            const retryResult: any = await retryCol.findOneAndUpdate(
-              { $or: [{ id: cleanId }, { _id: cleanId }] } as any,
-              { $set: { ...payload, _id: cleanId } },
-              { returnDocument: 'after', returnOriginal: false, upsert: true, new: true } as any
-            );
-            const retryRawDoc = retryResult && typeof retryResult === 'object' && 'value' in retryResult ? retryResult.value : retryResult;
-            let finalDoc = payload;
-            if (retryRawDoc && typeof retryRawDoc === 'object') {
-              const { _id, ...rest } = retryRawDoc;
-              finalDoc = { ...payload, ...rest, id: rest.id || _id || cleanId };
-            }
-            localMemoryDb[collectionName].set(cleanId, finalDoc);
-            lastSyncTime = new Date().toISOString();
-            return {
-              success: true,
-              message: `Document ${cleanId} upserted in MongoDB ${collectionName} after auto-reconnect`,
-              data: finalDoc,
-              doc: finalDoc,
-            };
-          }
-        } catch {
-          // Gracefully fallback to memory buffer
-        }
-      }
-      return {
-        success: true,
-        message: `Document ${cleanId} saved in local buffer (failover)`,
-        data: payload,
-        doc: payload,
-      };
-    }
+  if (!database) {
+    return {
+      success: false,
+      message: connectionError || 'MongoDB is not connected. Cannot persist document.',
+    };
   }
 
-  lastSyncTime = new Date().toISOString();
-  return {
-    success: true,
-    message: `Document ${cleanId} saved in local buffer (awaiting MongoDB connection)`,
-    data: payload,
-    doc: payload,
-  };
+  try {
+    const col = database.collection(collectionName);
+    const result: any = await col.findOneAndUpdate(
+      { $or: [{ id: cleanId }, { _id: cleanId }] } as any,
+      { $set: { ...payload, _id: cleanId } },
+      { returnDocument: 'after', returnOriginal: false, upsert: true, new: true } as any
+    );
+
+    const rawDoc = result && typeof result === 'object' && 'value' in result ? result.value : result;
+    let finalDoc = payload;
+    if (rawDoc && typeof rawDoc === 'object') {
+      const { _id, ...rest } = rawDoc;
+      finalDoc = { ...payload, ...rest, id: rest.id || _id || cleanId };
+    }
+    lastSyncTime = new Date().toISOString();
+    return {
+      success: true,
+      message: `Document ${cleanId} upserted in MongoDB ${collectionName}`,
+      data: finalDoc,
+      doc: finalDoc,
+    };
+  } catch (err: any) {
+    if (isConnectionOrPoolError(err)) {
+      resetMongoClient();
+      // Retry once with a freshly initialized connection
+      try {
+        const freshDb = await getMongoDb(true);
+        if (freshDb) {
+          const retryCol = freshDb.collection(collectionName);
+          const retryResult: any = await retryCol.findOneAndUpdate(
+            { $or: [{ id: cleanId }, { _id: cleanId }] } as any,
+            { $set: { ...payload, _id: cleanId } },
+            { returnDocument: 'after', returnOriginal: false, upsert: true, new: true } as any
+          );
+          const retryRawDoc = retryResult && typeof retryResult === 'object' && 'value' in retryResult ? retryResult.value : retryResult;
+          let finalDoc = payload;
+          if (retryRawDoc && typeof retryRawDoc === 'object') {
+            const { _id, ...rest } = retryRawDoc;
+            finalDoc = { ...payload, ...rest, id: rest.id || _id || cleanId };
+          }
+          lastSyncTime = new Date().toISOString();
+          return {
+            success: true,
+            message: `Document ${cleanId} upserted in MongoDB ${collectionName} after auto-reconnect`,
+            data: finalDoc,
+            doc: finalDoc,
+          };
+        }
+      } catch (retryErr: any) {
+        return {
+          success: false,
+          message: `Failed to save document in MongoDB: ${retryErr?.message || err?.message}`,
+        };
+      }
+    }
+    return {
+      success: false,
+      message: `Failed to save document in MongoDB: ${err?.message}`,
+    };
+  }
 }
 
 /**
  * Deletes a document from MongoDB with auto-reconnect and retry
  */
 export async function deleteMongoDoc(collectionName: string, id: string): Promise<{ success: boolean; message: string }> {
-  let database = await getMongoDb();
+  const database = await getMongoDb();
   const cleanId = String(id);
 
-  if (localMemoryDb[collectionName]) {
-    localMemoryDb[collectionName].delete(cleanId);
+  if (!database) {
+    return {
+      success: false,
+      message: connectionError || 'MongoDB is not connected. Cannot delete document.',
+    };
   }
-  incrementRtuRevision(collectionName, cleanId);
 
-  if (database) {
-    try {
-      const col = database.collection(collectionName);
-      await col.deleteOne({ $or: [{ id: cleanId }, { _id: cleanId }] } as any);
-      lastSyncTime = new Date().toISOString();
-      return { success: true, message: `Document ${cleanId} removed from MongoDB ${collectionName}` };
-    } catch (err: any) {
-      if (isConnectionOrPoolError(err)) {
-        resetMongoClient();
-        // Retry once with a freshly initialized connection
-        try {
-          const freshDb = await getMongoDb(true);
-          if (freshDb) {
-            const retryCol = freshDb.collection(collectionName);
-            await retryCol.deleteOne({ $or: [{ id: cleanId }, { _id: cleanId }] } as any);
-            lastSyncTime = new Date().toISOString();
-            return { success: true, message: `Document ${cleanId} removed from MongoDB ${collectionName} after auto-reconnect` };
-          }
-        } catch {
-          // Gracefully fallback to memory buffer
+  try {
+    const col = database.collection(collectionName);
+    await col.deleteOne({ $or: [{ id: cleanId }, { _id: cleanId }] } as any);
+    lastSyncTime = new Date().toISOString();
+    return { success: true, message: `Document ${cleanId} removed from MongoDB ${collectionName}` };
+  } catch (err: any) {
+    if (isConnectionOrPoolError(err)) {
+      resetMongoClient();
+      // Retry once with a freshly initialized connection
+      try {
+        const freshDb = await getMongoDb(true);
+        if (freshDb) {
+          const retryCol = freshDb.collection(collectionName);
+          await retryCol.deleteOne({ $or: [{ id: cleanId }, { _id: cleanId }] } as any);
+          lastSyncTime = new Date().toISOString();
+          return { success: true, message: `Document ${cleanId} removed from MongoDB ${collectionName} after auto-reconnect` };
         }
+      } catch (retryErr: any) {
+        return {
+          success: false,
+          message: `Failed to delete document from MongoDB: ${retryErr?.message || err?.message}`,
+        };
       }
-      return { success: true, message: `Document ${cleanId} removed from local buffer (failover)` };
     }
+    return { success: false, message: `Failed to delete document from MongoDB: ${err?.message}` };
   }
-
-  return { success: true, message: `Document ${cleanId} removed from local buffer` };
 }
 
 /**
@@ -659,11 +397,19 @@ export async function syncAllToMongo(data: Record<string, any[]> & { farmProfile
   success: boolean;
   message: string;
   counts: Record<string, number>;
-  databaseEngine: 'mongodb' | 'local';
+  databaseEngine: 'mongodb';
 }> {
   const database = await getMongoDb();
   const counts: Record<string, number> = {};
-  incrementRtuRevision();
+
+  if (!database) {
+    return {
+      success: false,
+      message: connectionError || 'MongoDB is not connected. Cannot sync collections.',
+      counts: {},
+      databaseEngine: 'mongodb',
+    };
+  }
 
   const collectionKeys = [
     'eggRecords',
@@ -688,54 +434,42 @@ export async function syncAllToMongo(data: Record<string, any[]> & { farmProfile
     'settings',
   ];
 
-  // Also update farmProfile
+  // Update farmProfile
   if (data.farmProfile) {
-    if (!localMemoryDb['farmProfile']) localMemoryDb['farmProfile'] = new Map();
-    localMemoryDb['farmProfile'].set('profile', data.farmProfile);
-    if (database) {
-      try {
-        await database.collection('farmProfile').updateOne(
-          { _id: 'profile' } as any,
-          { $set: { ...data.farmProfile, _id: 'profile', updatedAt: new Date().toISOString() } },
-          { upsert: true }
-        );
-      } catch (e) {
-        console.warn('MongoDB farmProfile sync notice:', e);
-      }
+    try {
+      await database.collection('farmProfile').updateOne(
+        { _id: 'profile' } as any,
+        { $set: { ...data.farmProfile, _id: 'profile', updatedAt: new Date().toISOString() } },
+        { upsert: true }
+      );
+    } catch (e) {
+      console.warn('MongoDB farmProfile sync notice:', e);
     }
   }
 
-  // Also update settings doc if provided separately
+  // Update settings doc if provided
   if (data.settings) {
-    if (!localMemoryDb['settings']) localMemoryDb['settings'] = new Map();
-    localMemoryDb['settings'].set('global_settings', data.settings);
-    if (database) {
-      try {
-        await database.collection('settings').updateOne(
-          { _id: 'global_settings' } as any,
-          { $set: { ...data.settings, _id: 'global_settings', updatedAt: new Date().toISOString() } },
-          { upsert: true }
-        );
-      } catch (e) {
-        console.warn('MongoDB settings sync notice:', e);
-      }
+    try {
+      await database.collection('settings').updateOne(
+        { _id: 'global_settings' } as any,
+        { $set: { ...data.settings, _id: 'global_settings', updatedAt: new Date().toISOString() } },
+        { upsert: true }
+      );
+    } catch (e) {
+      console.warn('MongoDB settings sync notice:', e);
     }
   }
 
-  // Also update standards doc if provided separately
+  // Update standards doc if provided
   if (data.standards) {
-    if (!localMemoryDb['standards']) localMemoryDb['standards'] = new Map();
-    localMemoryDb['standards'].set('breed_standards', data.standards);
-    if (database) {
-      try {
-        await database.collection('standards').updateOne(
-          { _id: 'breed_standards' } as any,
-          { $set: { ...data.standards, _id: 'breed_standards', updatedAt: new Date().toISOString() } },
-          { upsert: true }
-        );
-      } catch (e) {
-        console.warn('MongoDB standards sync notice:', e);
-      }
+    try {
+      await database.collection('standards').updateOne(
+        { _id: 'breed_standards' } as any,
+        { $set: { ...data.standards, _id: 'breed_standards', updatedAt: new Date().toISOString() } },
+        { upsert: true }
+      );
+    } catch (e) {
+      console.warn('MongoDB standards sync notice:', e);
     }
   }
 
@@ -743,18 +477,7 @@ export async function syncAllToMongo(data: Record<string, any[]> & { farmProfile
     const items = data[key] || [];
     counts[key] = items.length;
 
-    if (!localMemoryDb[key]) {
-      localMemoryDb[key] = new Map();
-    }
-
-    // Populate local memory
-    for (const item of items) {
-      const itemId = String(item.id || item.username || item.houseNumber || 'item_' + Math.random().toString(36).substring(2, 9));
-      localMemoryDb[key].set(itemId, { ...item, id: itemId });
-    }
-
-    // If MongoDB is connected, execute bulk upserts
-    if (database && items.length > 0) {
+    if (items.length > 0) {
       try {
         const col = database.collection(key);
         const operations = items.map((item) => {
@@ -786,20 +509,17 @@ export async function syncAllToMongo(data: Record<string, any[]> & { farmProfile
   }
 
   lastSyncTime = new Date().toISOString();
-  incrementRtuRevision('all', 'bulk_sync');
 
   return {
     success: true,
-    message: database
-      ? 'All farm collections successfully written and synchronized to MongoDB database!'
-      : 'All farm collections synced to server local storage buffer (ready for MongoDB sync).',
+    message: 'All farm collections successfully written and synchronized to MongoDB database!',
     counts,
-    databaseEngine: database ? 'mongodb' : 'local',
+    databaseEngine: 'mongodb',
   };
 }
 
 /**
- * Hydrates and pulls all collections from MongoDB
+ * Hydrates and pulls all collections directly from MongoDB
  */
 export async function pullAllFromMongo(): Promise<{
   success: boolean;
@@ -808,13 +528,22 @@ export async function pullAllFromMongo(): Promise<{
   farmProfile?: any;
   settings?: any;
   standards?: any;
-  databaseEngine: 'mongodb' | 'local';
+  databaseEngine: 'mongodb';
 }> {
   const database = await getMongoDb();
   const result: Record<string, any[]> = {};
   let farmProfile: any = null;
   let settings: any = null;
   let standards: any = null;
+
+  if (!database) {
+    return {
+      success: false,
+      message: connectionError || 'MongoDB is not connected. Cannot pull collections.',
+      data: {},
+      databaseEngine: 'mongodb',
+    };
+  }
 
   const collectionKeys = [
     'eggRecords',
@@ -839,122 +568,76 @@ export async function pullAllFromMongo(): Promise<{
     'settings',
   ];
 
-  if (database) {
-    try {
-      // Fetch all collections in parallel for optimal responsiveness
-      const fetchPromises = collectionKeys.map(async (key) => {
-        try {
-          const docs = await database.collection(key).find({}).toArray();
-          const itemsMap = new Map<string, any>();
-          
-          docs.forEach((d: any) => {
-            const { _id, ...rest } = d;
-            const item: any = { ...rest, id: rest.id || _id };
-            let uniqueKey = String(item.id || _id);
-            if (key === 'flocks' && item.houseNumber) {
-              uniqueKey = String(item.houseNumber);
-            } else if (key === 'users' && item.username) {
-              uniqueKey = String(item.username).toLowerCase();
-            } else if (key === 'biosecurityLogs' && item.requirementId && item.date) {
-              uniqueKey = `${item.requirementId}_${item.date}`;
-            }
-            // Keep latest or preferred document
-            itemsMap.set(uniqueKey, item);
-          });
-
-          const deduplicatedItems = Array.from(itemsMap.values());
-          result[key] = deduplicatedItems;
-          
-          if (!localMemoryDb[key]) localMemoryDb[key] = new Map();
-          deduplicatedItems.forEach((item: any) => {
-            let itemId = String(item.id || item.username || item.houseNumber || 'item_' + Math.random().toString(36).substring(2, 9));
-            if (key === 'flocks' && item.houseNumber) itemId = String(item.houseNumber);
-            if (key === 'users' && item.username) itemId = String(item.username).toLowerCase();
-            localMemoryDb[key].set(itemId, item);
-          });
-        } catch {
-          // If a single collection fails, fallback to local buffer for that collection
-          if (localMemoryDb[key]) {
-            result[key] = Array.from(localMemoryDb[key].values());
-          } else {
-            result[key] = [];
+  try {
+    // Fetch all collections in parallel for optimal responsiveness
+    const fetchPromises = collectionKeys.map(async (key) => {
+      try {
+        const docs = await database.collection(key).find({}).toArray();
+        const itemsMap = new Map<string, any>();
+        
+        docs.forEach((d: any) => {
+          const { _id, ...rest } = d;
+          const item: any = { ...rest, id: rest.id || _id };
+          let uniqueKey = String(item.id || _id);
+          if (key === 'flocks' && item.houseNumber) {
+            uniqueKey = String(item.houseNumber);
+          } else if (key === 'users' && item.username) {
+            uniqueKey = String(item.username).toLowerCase();
+          } else if (key === 'biosecurityLogs' && item.requirementId && item.date) {
+            uniqueKey = `${item.requirementId}_${item.date}`;
           }
+          itemsMap.set(uniqueKey, item);
+        });
+
+        result[key] = Array.from(itemsMap.values());
+      } catch (colErr: any) {
+        console.warn(`🍃 [MongoDB] Notice reading collection ${key}:`, colErr?.message);
+        result[key] = [];
+      }
+    });
+
+    const singleDocPromises = [
+      database.collection('farmProfile').findOne({ _id: 'profile' } as any).then(doc => {
+        if (doc) {
+          const { _id, ...rest } = doc;
+          farmProfile = rest;
         }
-      });
+      }).catch(() => {}),
 
-      const singleDocPromises = [
-        database.collection('farmProfile').findOne({ _id: 'profile' } as any).then(doc => {
-          if (doc) {
-            const { _id, ...rest } = doc;
-            farmProfile = rest;
-            if (!localMemoryDb['farmProfile']) localMemoryDb['farmProfile'] = new Map();
-            localMemoryDb['farmProfile'].set('profile', farmProfile);
-          }
-        }).catch(() => {}),
+      database.collection('settings').findOne({ _id: 'global_settings' } as any).then(doc => {
+        if (doc) {
+          const { _id, ...rest } = doc;
+          settings = rest;
+        }
+      }).catch(() => {}),
 
-        database.collection('settings').findOne({ _id: 'global_settings' } as any).then(doc => {
-          if (doc) {
-            const { _id, ...rest } = doc;
-            settings = rest;
-            if (!localMemoryDb['settings']) localMemoryDb['settings'] = new Map();
-            localMemoryDb['settings'].set('global_settings', settings);
-          }
-        }).catch(() => {}),
+      database.collection('standards').findOne({ _id: 'breed_standards' } as any).then(doc => {
+        if (doc) {
+          const { _id, ...rest } = doc;
+          standards = rest;
+        }
+      }).catch(() => {}),
+    ];
 
-        database.collection('standards').findOne({ _id: 'breed_standards' } as any).then(doc => {
-          if (doc) {
-            const { _id, ...rest } = doc;
-            standards = rest;
-            if (!localMemoryDb['standards']) localMemoryDb['standards'] = new Map();
-            localMemoryDb['standards'].set('breed_standards', standards);
-          }
-        }).catch(() => {}),
-      ];
+    await Promise.all([...fetchPromises, ...singleDocPromises]);
 
-      await Promise.all([...fetchPromises, ...singleDocPromises]);
-
-      lastSyncTime = new Date().toISOString();
-      return {
-        success: true,
-        message: 'Successfully pulled latest farm collections from MongoDB cluster.',
-        data: result,
-        farmProfile,
-        settings,
-        standards,
-        databaseEngine: 'mongodb',
-      };
-    } catch (err: any) {
-      console.warn('🍃 [MongoDB] Notice reading collections (failing over to local server buffer):', err?.message);
-      connectionError = err?.message;
-    }
+    lastSyncTime = new Date().toISOString();
+    return {
+      success: true,
+      message: 'Successfully pulled latest farm collections from MongoDB cluster.',
+      data: result,
+      farmProfile,
+      settings,
+      standards,
+      databaseEngine: 'mongodb',
+    };
+  } catch (err: any) {
+    connectionError = err?.message;
+    return {
+      success: false,
+      message: `Failed to pull collections from MongoDB: ${err?.message}`,
+      data: {},
+      databaseEngine: 'mongodb',
+    };
   }
-
-  // Fallback to local memory buffer
-  for (const key of collectionKeys) {
-    if (localMemoryDb[key]) {
-      result[key] = Array.from(localMemoryDb[key].values());
-    } else {
-      result[key] = [];
-    }
-  }
-
-  if (localMemoryDb['farmProfile'] && localMemoryDb['farmProfile'].has('profile')) {
-    farmProfile = localMemoryDb['farmProfile'].get('profile');
-  }
-  if (localMemoryDb['settings'] && localMemoryDb['settings'].has('global_settings')) {
-    settings = localMemoryDb['settings'].get('global_settings');
-  }
-  if (localMemoryDb['standards'] && localMemoryDb['standards'].has('breed_standards')) {
-    standards = localMemoryDb['standards'].get('breed_standards');
-  }
-
-  return {
-    success: true,
-    message: 'Pulled data from server buffer.',
-    data: result,
-    farmProfile,
-    settings,
-    standards,
-    databaseEngine: 'local',
-  };
 }

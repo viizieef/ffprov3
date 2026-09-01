@@ -769,11 +769,11 @@ export const SettingsView: React.FC = () => {
                 <span>Central Cloud Database & Real-Time Sync</span>
               </h4>
               <p className="text-xs text-slate-600">
-                FarmFlow Pro connects directly to your central MongoDB database with real-time multi-device sync (RTU), instant backup exports, and zero data loss.
+                FarmFlow Pro connects directly to your central MongoDB database with instant data persistence, backup exports, and zero data loss.
               </p>
               <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-mint-100 text-forest-900 rounded-xl text-xs font-bold">
                 <CheckCircle2 className="w-4 h-4 text-forest-700" />
-                <span>MongoDB RTU Active & Synchronized</span>
+                <span>MongoDB Active & Synchronized</span>
               </div>
             </div>
 
@@ -1026,7 +1026,7 @@ export const SettingsView: React.FC = () => {
                   <ul className="text-xs text-forest-900 space-y-1 list-disc list-inside">
                     <li><strong>Login / Register Gate:</strong> New users are directed to the authentication screen first before accessing any farm records.</li>
                     <li><strong>Role Scoping:</strong> Flockmen and Egg Collectors only see their assigned houses on mobile screens.</li>
-                    <li><strong>RTU Central Database:</strong> All devices and accounts connect live to the single central database in real time with continuous multi-device sync.</li>
+                    <li><strong>Central Cloud Database:</strong> All devices and accounts connect directly to the central MongoDB database with persistent cloud storage.</li>
                   </ul>
                 </div>
 

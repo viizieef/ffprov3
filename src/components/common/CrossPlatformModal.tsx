@@ -327,7 +327,7 @@ export const CrossPlatformModal: React.FC<CrossPlatformModalProps> = ({
                   <div className="p-2.5 bg-white rounded-xl border border-slate-200">
                     <p className="font-bold text-slate-900 flex items-center gap-1.5">
                       <Database className="w-3.5 h-3.5 text-forest-700" />
-                      <span>RTU Central DB</span>
+                      <span>Central Cloud DB</span>
                     </p>
                     <p className="text-[10px] text-emerald-700 font-semibold mt-0.5">✓ Live Synchronized</p>
                   </div>
