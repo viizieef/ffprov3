@@ -10,6 +10,9 @@ import {
   syncAllToMongo, 
   pullAllFromMongo, 
   getMongoDb,
+  getFarmProfileDoc,
+  saveFarmProfileDoc,
+  saveOverviewDoc,
 } from './server/mongodb.js';
 
 dotenv.config();
@@ -60,6 +63,121 @@ async function startServer() {
       res.status(500).json({
         connected: false,
         error: err?.message || 'Failed to query MongoDB status',
+      });
+    }
+  });
+
+  // Dedicated Database Connection & Persistence for Farm Profile & Overview
+  app.get('/api/farm-profile', async (_req, res) => {
+    try {
+      const result = await getFarmProfileDoc();
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({
+        success: false,
+        message: err?.message || 'Error querying farm profile from MongoDB',
+      });
+    }
+  });
+
+  app.post('/api/farm-profile', async (req, res) => {
+    try {
+      const profileData = req.body;
+      const result = await saveFarmProfileDoc(profileData);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({
+        success: false,
+        message: err?.message || 'Error saving farm profile to MongoDB',
+      });
+    }
+  });
+
+  app.put('/api/farm-profile', async (req, res) => {
+    try {
+      const profileData = req.body;
+      const result = await saveFarmProfileDoc(profileData);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({
+        success: false,
+        message: err?.message || 'Error updating farm profile in MongoDB',
+      });
+    }
+  });
+
+  app.get('/api/farm-profile/overview', async (_req, res) => {
+    try {
+      const result = await getFarmProfileDoc();
+      if (result.success && result.data) {
+        const d = result.data;
+        res.json({
+          success: true,
+          data: {
+            name: d.name,
+            address: d.address,
+            contactNumber: d.contactNumber,
+            email: d.email,
+            establishedYear: d.establishedYear,
+            industrySector: d.industrySector,
+            primaryBreeds: d.primaryBreeds,
+            facilityHousesCount: d.facilityHousesCount,
+            totalBirdCapacity: d.totalBirdCapacity,
+            dailyEggCapacity: d.dailyEggCapacity,
+            farmOverviewNotes: d.farmOverviewNotes,
+            farmOwners: d.farmOwners,
+            presidentCeo: d.presidentCeo,
+            cfo: d.cfo,
+            animalHealthSpecialist: d.animalHealthSpecialist,
+            animalProductionSpecialist: d.animalProductionSpecialist,
+            currency: d.currency,
+            logoUrl: d.logoUrl,
+          }
+        });
+      } else {
+        res.json({ success: true, data: null });
+      }
+    } catch (err: any) {
+      res.status(500).json({
+        success: false,
+        message: err?.message || 'Error retrieving farm overview',
+      });
+    }
+  });
+
+  app.post('/api/farm-profile/overview', async (req, res) => {
+    try {
+      const overviewData = req.body;
+      const result = await saveOverviewDoc(overviewData);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({
+        success: false,
+        message: err?.message || 'Error updating farm overview in MongoDB',
+      });
+    }
+  });
+
+  app.get('/api/mongodb/farm-profile', async (_req, res) => {
+    try {
+      const result = await getFarmProfileDoc();
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({
+        success: false,
+        message: err?.message || 'Error querying farm profile from MongoDB',
+      });
+    }
+  });
+
+  app.post('/api/mongodb/farm-profile', async (req, res) => {
+    try {
+      const result = await saveFarmProfileDoc(req.body);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({
+        success: false,
+        message: err?.message || 'Error saving farm profile to MongoDB',
       });
     }
   });

@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { DeliveryRecord } from '../../types';
+import { useFarm } from '../../context/FarmContext';
 import { 
   ResponsiveContainer, 
   ComposedChart, 
@@ -24,7 +25,8 @@ import {
   Truck, 
   Layers,
   Sparkles,
-  PieChart as PieIcon
+  PieChart as PieIcon,
+  Egg
 } from 'lucide-react';
 
 interface DeliveryAnalyticsProps {
@@ -42,9 +44,31 @@ const DEFECT_COLORS = [
 ];
 
 export const DeliveryAnalytics: React.FC<DeliveryAnalyticsProps> = ({ deliveries }) => {
+  const { hatchingSummaries = [] } = useFarm();
+  const safeHatching = Array.isArray(hatchingSummaries) ? hatchingSummaries : [];
+
   const safeDeliveries = useMemo(() => {
     return [...deliveries].sort((a, b) => new Date(a.productionDate).getTime() - new Date(b.productionDate).getTime());
   }, [deliveries]);
+
+  // Hatching summary trend chart data
+  const hatchingChartData = useMemo(() => {
+    return [...safeHatching]
+      .sort((a, b) => new Date(a.settingDate).getTime() - new Date(b.settingDate).getTime())
+      .map(h => ({
+        label: `H${h.houseNumber} (${h.settingDate.substring(5)})`,
+        house: `House ${h.houseNumber}`,
+        settingDate: h.settingDate,
+        pullOutDate: h.pullOutDate,
+        eggsSet: h.eggsSet,
+        standardChicks: h.standardChicks,
+        gradeOut: h.gradeOut,
+        totalChicksPulled: h.totalChicksPulled,
+        totalHatchPct: h.totalHatchPct,
+        saleableHatchPct: h.saleableHatchPct,
+        target: 85.0
+      }));
+  }, [safeHatching]);
 
   // High-level aggregates
   const stats = useMemo(() => {
@@ -321,6 +345,50 @@ export const DeliveryAnalytics: React.FC<DeliveryAnalyticsProps> = ({ deliveries
           ))}
         </div>
       </div>
+
+      {/* Hatching Summary & Chick Yield Trends Chart (If available) */}
+      {hatchingChartData.length > 0 && (
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2 font-bold text-slate-900 text-sm">
+              <Egg className="w-4 h-4 text-emerald-600" />
+              <span>Hatching Summary & Saleable Chick Yield Trends</span>
+            </div>
+            <div className="flex items-center gap-4 text-xs">
+              <span className="flex items-center gap-1.5 text-emerald-700 font-bold">
+                <span className="w-2.5 h-2.5 bg-emerald-500 rounded-full" />
+                Saleable Hatch %
+              </span>
+              <span className="flex items-center gap-1.5 text-slate-700 font-bold">
+                <span className="w-2.5 h-2.5 bg-slate-700 rounded-full" />
+                Total Hatch %
+              </span>
+              <span className="flex items-center gap-1.5 text-rose-500 font-bold">
+                <span className="w-2.5 h-0.5 bg-rose-500" />
+                Target (85%)
+              </span>
+            </div>
+          </div>
+
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={hatchingChartData}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#64748b' }} />
+                <YAxis unit="%" domain={[70, 100]} tick={{ fontSize: 11, fill: '#64748b' }} />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: '#0f172a', borderRadius: '12px', color: '#fff', fontSize: '12px', border: 'none' }}
+                  formatter={(val: any, name: any) => [`${Number(val).toFixed(2)}%`, name]}
+                />
+                <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '8px' }} />
+                <Bar dataKey="saleableHatchPct" name="Saleable Hatch %" fill="#10b981" radius={[4, 4, 0, 0]} />
+                <Line type="monotone" dataKey="totalHatchPct" name="Total Hatch %" stroke="#0f172a" strokeWidth={2} dot={{ r: 4 }} />
+                <Line type="monotone" dataKey="target" name="Target Benchmark (85%)" stroke="#ef4444" strokeWidth={1.5} strokeDasharray="5 5" dot={false} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
 
     </div>
   );

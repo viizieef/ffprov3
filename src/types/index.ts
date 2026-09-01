@@ -552,6 +552,28 @@ export interface DeliveryRecord {
   updatedAt?: string;
 }
 
+export interface HatchingSummaryRecord {
+  id: string;
+  settingDate: string; // Setting Date (YYYY-MM-DD)
+  houseNumber: string; // House (e.g. "1", "2", "3", "4", "5", "6" or "House 1")
+  breed: string; // Breed (e.g. "Cobb 500", "Ross 308")
+  eggsSet: number; // # of Eggs set
+  pullOutDate: string; // Pull-out Date (YYYY-MM-DD)
+  standardChicks: number; // Standard Chicks
+  gradeOut: number; // Grade out
+  totalChicksPulled: number; // Total Chicks Pulled = standardChicks + gradeOut
+  totalHatchPct: number; // Total Hatch % = (totalChicksPulled / eggsSet) * 100
+  saleableHatchPct: number; // Saleable Hatch % = (standardChicks / eggsSet) * 100
+  gradeOutPct?: number; // (gradeOut / eggsSet) * 100
+  hatcheryName?: string; // e.g. "MJBJ Hatchery"
+  deliveryId?: string; // Reference to ESRRR delivery batch
+  esrrrNumber?: string; // Reference to ESRRR voucher number
+  notes?: string;
+  loggedBy?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
 export type ModuleType = 
   | 'dashboard'
   | 'farm_profile'

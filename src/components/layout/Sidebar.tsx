@@ -92,8 +92,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       id: 'delivery',
-      label: 'Egg Delivery & ESRRR',
-      sublabel: 'Sending, Receiving & Regrading',
+      label: 'Egg Delivery & Hatching',
+      sublabel: 'ESRRR & Hatching Summary',
       icon: Truck,
       visible: permissions.canViewModule('delivery'),
       badge: 'ESRRR',

@@ -178,6 +178,7 @@ async function ensureMongoIndexes(database: Db) {
       database.collection('bodyWeights').createIndex({ flockId: 1, weekAge: 1 }, indexOpts),
       database.collection('biosecurityLogs').createIndex({ requirementId: 1, date: 1 }, indexOpts),
       database.collection('deliveries').createIndex({ deliveryDate: 1, deliveryNumber: 1 }, indexOpts),
+      database.collection('hatchingSummaries').createIndex({ settingDate: 1, houseNumber: 1 }, indexOpts),
     ]);
   } catch {
     // silently handle benign index creation timeouts during pool resets
@@ -276,8 +277,9 @@ export async function saveMongoDoc(
   docData: any
 ): Promise<{ success: boolean; message: string; data?: any; doc?: any }> {
   const database = await getMongoDb();
-  const cleanId = String(id || docData.id || docData._id || 'item_' + Date.now());
-  const payload = { ...docData, id: cleanId, updatedAt: new Date().toISOString() };
+  const cleanId = String(id || docData?.id || docData?._id || 'item_' + Date.now());
+  const { _id, ...cleanDocData } = docData || {};
+  const payload = { ...cleanDocData, id: cleanId, updatedAt: new Date().toISOString() };
 
   if (!database) {
     return {
@@ -288,24 +290,21 @@ export async function saveMongoDoc(
 
   try {
     const col = database.collection(collectionName);
-    const result: any = await col.findOneAndUpdate(
+    await col.updateOne(
       { $or: [{ id: cleanId }, { _id: cleanId }] } as any,
-      { $set: { ...payload, _id: cleanId } },
-      { returnDocument: 'after', returnOriginal: false, upsert: true, new: true } as any
+      { 
+        $set: payload,
+        $setOnInsert: { _id: cleanId } as any
+      },
+      { upsert: true }
     );
 
-    const rawDoc = result && typeof result === 'object' && 'value' in result ? result.value : result;
-    let finalDoc = payload;
-    if (rawDoc && typeof rawDoc === 'object') {
-      const { _id, ...rest } = rawDoc;
-      finalDoc = { ...payload, ...rest, id: rest.id || _id || cleanId };
-    }
     lastSyncTime = new Date().toISOString();
     return {
       success: true,
       message: `Document ${cleanId} upserted in MongoDB ${collectionName}`,
-      data: finalDoc,
-      doc: finalDoc,
+      data: payload,
+      doc: payload,
     };
   } catch (err: any) {
     if (isConnectionOrPoolError(err)) {
@@ -315,23 +314,20 @@ export async function saveMongoDoc(
         const freshDb = await getMongoDb(true);
         if (freshDb) {
           const retryCol = freshDb.collection(collectionName);
-          const retryResult: any = await retryCol.findOneAndUpdate(
+          await retryCol.updateOne(
             { $or: [{ id: cleanId }, { _id: cleanId }] } as any,
-            { $set: { ...payload, _id: cleanId } },
-            { returnDocument: 'after', returnOriginal: false, upsert: true, new: true } as any
+            { 
+              $set: payload,
+              $setOnInsert: { _id: cleanId } as any
+            },
+            { upsert: true }
           );
-          const retryRawDoc = retryResult && typeof retryResult === 'object' && 'value' in retryResult ? retryResult.value : retryResult;
-          let finalDoc = payload;
-          if (retryRawDoc && typeof retryRawDoc === 'object') {
-            const { _id, ...rest } = retryRawDoc;
-            finalDoc = { ...payload, ...rest, id: rest.id || _id || cleanId };
-          }
           lastSyncTime = new Date().toISOString();
           return {
             success: true,
             message: `Document ${cleanId} upserted in MongoDB ${collectionName} after auto-reconnect`,
-            data: finalDoc,
-            doc: finalDoc,
+            data: payload,
+            doc: payload,
           };
         }
       } catch (retryErr: any) {
@@ -345,6 +341,136 @@ export async function saveMongoDoc(
       success: false,
       message: `Failed to save document in MongoDB: ${err?.message}`,
     };
+  }
+}
+
+/**
+ * Dedicated database retrieval for farm profile & overview
+ */
+export async function getFarmProfileDoc(): Promise<{ success: boolean; data?: any; message: string }> {
+  const database = await getMongoDb();
+  if (!database) {
+    return { success: false, message: connectionError || 'MongoDB is not connected.' };
+  }
+  try {
+    const col = database.collection('farmProfile');
+    let doc = await col.findOne({ $or: [{ _id: 'profile' }, { id: 'profile' }] } as any);
+    if (!doc) {
+      doc = await col.findOne({});
+    }
+    if (doc) {
+      const { _id, ...rest } = doc;
+      return { 
+        success: true, 
+        data: { ...rest, id: rest.id || _id || 'profile' }, 
+        message: 'Farm profile retrieved from MongoDB' 
+      };
+    }
+    return { success: true, data: null, message: 'No farm profile found in MongoDB' };
+  } catch (err: any) {
+    return { success: false, message: `Failed to retrieve farm profile: ${err?.message}` };
+  }
+}
+
+/**
+ * Dedicated database persistence for farm profile & overview
+ */
+export async function saveFarmProfileDoc(profileData: any): Promise<{ success: boolean; data?: any; message: string }> {
+  const database = await getMongoDb();
+  if (!database) {
+    return { success: false, message: connectionError || 'MongoDB is not connected.' };
+  }
+  try {
+    const col = database.collection('farmProfile');
+    const { _id, ...cleanData } = profileData || {};
+    const payload = {
+      ...cleanData,
+      id: 'profile',
+      updatedAt: new Date().toISOString()
+    };
+    
+    await col.updateOne(
+      { $or: [{ _id: 'profile' }, { id: 'profile' }] } as any,
+      { 
+        $set: payload,
+        $setOnInsert: { _id: 'profile' } as any
+      },
+      { upsert: true }
+    );
+    
+    // Also mirror relevant settings to settings collection for seamless multi-module access
+    try {
+      const settingsCol = database.collection('settings');
+      await settingsCol.updateOne(
+        { $or: [{ _id: 'global_settings' }, { id: 'global_settings' }] } as any,
+        {
+          $set: {
+            currency: payload.currency,
+            facilityHousesCount: payload.facilityHousesCount,
+            totalBirdCapacity: payload.totalBirdCapacity,
+            dailyEggCapacity: payload.dailyEggCapacity,
+            farmOverviewNotes: payload.farmOverviewNotes,
+            industrySector: payload.industrySector,
+            primaryBreeds: payload.primaryBreeds,
+            farmOwners: payload.farmOwners,
+            presidentCeo: payload.presidentCeo,
+            cfo: payload.cfo,
+            animalHealthSpecialist: payload.animalHealthSpecialist,
+            animalProductionSpecialist: payload.animalProductionSpecialist,
+            updatedAt: new Date().toISOString()
+          },
+          $setOnInsert: { _id: 'global_settings', id: 'global_settings' } as any
+        },
+        { upsert: true }
+      );
+    } catch (sErr) {
+      console.warn('Settings mirror sync notice:', sErr);
+    }
+
+    lastSyncTime = new Date().toISOString();
+    return {
+      success: true,
+      data: payload,
+      message: 'Farm profile & overview saved successfully to MongoDB database'
+    };
+  } catch (err: any) {
+    return { success: false, message: `Failed to save farm profile: ${err?.message}` };
+  }
+}
+
+/**
+ * Dedicated database persistence for farm overview specifications
+ */
+export async function saveOverviewDoc(overviewData: any): Promise<{ success: boolean; data?: any; message: string }> {
+  const database = await getMongoDb();
+  if (!database) {
+    return { success: false, message: connectionError || 'MongoDB is not connected.' };
+  }
+  try {
+    const col = database.collection('farmProfile');
+    const { _id, ...cleanData } = overviewData || {};
+    const payload = {
+      ...cleanData,
+      updatedAt: new Date().toISOString()
+    };
+    
+    await col.updateOne(
+      { $or: [{ _id: 'profile' }, { id: 'profile' }] } as any,
+      { 
+        $set: payload,
+        $setOnInsert: { _id: 'profile' } as any
+      },
+      { upsert: true }
+    );
+    
+    lastSyncTime = new Date().toISOString();
+    return {
+      success: true,
+      data: payload,
+      message: 'Farm overview updated in MongoDB database'
+    };
+  } catch (err: any) {
+    return { success: false, message: `Failed to update farm overview: ${err?.message}` };
   }
 }
 
@@ -427,6 +553,7 @@ export async function syncAllToMongo(data: Record<string, any[]> & { farmProfile
     'biosecuritySummaries',
     'weeklyEggWeights',
     'deliveries',
+    'hatchingSummaries',
     'users',
     'auditLogs',
     'systemLogs',
@@ -437,9 +564,13 @@ export async function syncAllToMongo(data: Record<string, any[]> & { farmProfile
   // Update farmProfile
   if (data.farmProfile) {
     try {
+      const { _id, ...cleanProfile } = data.farmProfile;
       await database.collection('farmProfile').updateOne(
-        { _id: 'profile' } as any,
-        { $set: { ...data.farmProfile, _id: 'profile', updatedAt: new Date().toISOString() } },
+        { $or: [{ _id: 'profile' }, { id: 'profile' }] } as any,
+        { 
+          $set: { ...cleanProfile, id: 'profile', updatedAt: new Date().toISOString() },
+          $setOnInsert: { _id: 'profile' } as any
+        },
         { upsert: true }
       );
     } catch (e) {
@@ -450,9 +581,13 @@ export async function syncAllToMongo(data: Record<string, any[]> & { farmProfile
   // Update settings doc if provided
   if (data.settings) {
     try {
+      const { _id, ...cleanSettings } = data.settings;
       await database.collection('settings').updateOne(
-        { _id: 'global_settings' } as any,
-        { $set: { ...data.settings, _id: 'global_settings', updatedAt: new Date().toISOString() } },
+        { $or: [{ _id: 'global_settings' }, { id: 'global_settings' }] } as any,
+        { 
+          $set: { ...cleanSettings, id: 'global_settings', updatedAt: new Date().toISOString() },
+          $setOnInsert: { _id: 'global_settings' } as any
+        },
         { upsert: true }
       );
     } catch (e) {
@@ -463,9 +598,13 @@ export async function syncAllToMongo(data: Record<string, any[]> & { farmProfile
   // Update standards doc if provided
   if (data.standards) {
     try {
+      const { _id, ...cleanStandards } = data.standards;
       await database.collection('standards').updateOne(
-        { _id: 'breed_standards' } as any,
-        { $set: { ...data.standards, _id: 'breed_standards', updatedAt: new Date().toISOString() } },
+        { $or: [{ _id: 'breed_standards' }, { id: 'breed_standards' }] } as any,
+        { 
+          $set: { ...cleanStandards, id: 'breed_standards', updatedAt: new Date().toISOString() },
+          $setOnInsert: { _id: 'breed_standards' } as any
+        },
         { upsert: true }
       );
     } catch (e) {
@@ -561,6 +700,7 @@ export async function pullAllFromMongo(): Promise<{
     'biosecuritySummaries',
     'weeklyEggWeights',
     'deliveries',
+    'hatchingSummaries',
     'users',
     'auditLogs',
     'systemLogs',
@@ -597,24 +737,39 @@ export async function pullAllFromMongo(): Promise<{
     });
 
     const singleDocPromises = [
-      database.collection('farmProfile').findOne({ _id: 'profile' } as any).then(doc => {
+      database.collection('farmProfile').findOne({ $or: [{ _id: 'profile' }, { id: 'profile' }] } as any).then(doc => {
+        if (!doc) {
+          return database.collection('farmProfile').findOne({});
+        }
+        return doc;
+      }).then(doc => {
         if (doc) {
           const { _id, ...rest } = doc;
-          farmProfile = rest;
+          farmProfile = { ...rest, id: rest.id || _id || 'profile' };
         }
       }).catch(() => {}),
 
-      database.collection('settings').findOne({ _id: 'global_settings' } as any).then(doc => {
+      database.collection('settings').findOne({ $or: [{ _id: 'global_settings' }, { id: 'global_settings' }] } as any).then(doc => {
+        if (!doc) {
+          return database.collection('settings').findOne({});
+        }
+        return doc;
+      }).then(doc => {
         if (doc) {
           const { _id, ...rest } = doc;
-          settings = rest;
+          settings = { ...rest, id: rest.id || _id || 'global_settings' };
         }
       }).catch(() => {}),
 
-      database.collection('standards').findOne({ _id: 'breed_standards' } as any).then(doc => {
+      database.collection('standards').findOne({ $or: [{ _id: 'breed_standards' }, { id: 'breed_standards' }] } as any).then(doc => {
+        if (!doc) {
+          return database.collection('standards').findOne({});
+        }
+        return doc;
+      }).then(doc => {
         if (doc) {
           const { _id, ...rest } = doc;
-          standards = rest;
+          standards = { ...rest, id: rest.id || _id || 'breed_standards' };
         }
       }).catch(() => {}),
     ];

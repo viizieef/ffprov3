@@ -30,7 +30,8 @@ import {
   BiosecurityFrequency,
   BiosecurityCriticalLevel,
   DeliveryRecord,
-  DeliveryHouseRecord
+  DeliveryHouseRecord,
+  HatchingSummaryRecord
 } from '../types';
 import { 
   INITIAL_FARM_PROFILE, 
@@ -49,7 +50,8 @@ import {
   INITIAL_BIOSECURITY_REQUIREMENTS,
   INITIAL_BIOSECURITY_LOGS,
   INITIAL_BIOSECURITY_SUMMARIES,
-  INITIAL_DELIVERIES
+  INITIAL_DELIVERIES,
+  INITIAL_HATCHING_SUMMARIES
 } from '../data/initialData';
 import { calculateFlockAgeFromLoadingDate } from '../utils/dateCalculations';
 import { detectPlatform } from '../utils/platform';
@@ -59,7 +61,9 @@ import {
   saveDocToMongoDB,
   deleteDocFromMongoDB,
   getMongoDBStatus,
-  startMongoDBPolling
+  startMongoDBPolling,
+  saveFarmProfileToMongoDB,
+  getFarmProfileFromMongoDB
 } from '../services/mongodbSync';
 
 export interface StorageQuotaInfo {
@@ -177,7 +181,7 @@ interface FarmContextType {
 
   // Farm Profile
   farmProfile: FarmProfile;
-  updateFarmProfile: (profile: Partial<FarmProfile>) => void;
+  updateFarmProfile: (profile: Partial<FarmProfile>) => Promise<{ success: boolean; message: string; data?: FarmProfile }>;
   updateStandardVaccination: (program: StandardMedProgramItem[]) => void;
   updateStandardFeedGuide: (guide: StandardFeedGuideItem[]) => void;
   updateStandardHenday: (henday: StandardHendayItem[]) => void;
@@ -242,6 +246,13 @@ interface FarmContextType {
   updateDelivery: (id: string, updates: Partial<DeliveryRecord>) => void;
   deleteDelivery: (id: string) => void;
   getDeliveryById: (id: string) => DeliveryRecord | undefined;
+
+  // Hatching Summary
+  hatchingSummaries: HatchingSummaryRecord[];
+  addHatchingSummary: (record: Omit<HatchingSummaryRecord, 'id' | 'createdAt'>) => HatchingSummaryRecord;
+  updateHatchingSummary: (id: string, updates: Partial<HatchingSummaryRecord>) => void;
+  deleteHatchingSummary: (id: string) => void;
+  getHatchingSummaryById: (id: string) => HatchingSummaryRecord | undefined;
 
   // Biosecurity Compliance
   biosecurityRequirements: BiosecurityRequirement[];
@@ -480,6 +491,10 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     safeParseArray<DeliveryRecord>(`${LOCAL_STORAGE_KEY}_deliveries`, INITIAL_DELIVERIES)
   );
 
+  const [hatchingSummaries, setHatchingSummaries] = useState<HatchingSummaryRecord[]>(() => 
+    safeParseArray<HatchingSummaryRecord>(`${LOCAL_STORAGE_KEY}_hatching_summaries`, INITIAL_HATCHING_SUMMARIES)
+  );
+
   // Platform & Mobile Auto-Routing Engine
   const platformInfo = useMemo(() => {
     return detectPlatform();
@@ -648,6 +663,7 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         biosecuritySummaries,
         weeklyEggWeights,
         deliveries,
+        hatchingSummaries,
         users,
         auditLogs: systemLogs,
         systemLogs,
@@ -694,6 +710,7 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           biosecuritySummaries: remoteBioSummaries,
           weeklyEggWeights: remoteWeeklyWeights,
           deliveries: remoteDeliveries,
+          hatchingSummaries: remoteHatching,
           users: remoteUsers,
           farmProfile: remoteProfile,
           auditLogs: remoteAuditLogs,
@@ -802,6 +819,12 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           const unique = deduplicateById(remoteDeliveries);
           setDeliveries(unique);
           localStorage.setItem(`${LOCAL_STORAGE_KEY}_deliveries`, JSON.stringify(unique));
+        }
+
+        if (Array.isArray(remoteHatching)) {
+          const unique = deduplicateById(remoteHatching);
+          setHatchingSummaries(unique);
+          localStorage.setItem(`${LOCAL_STORAGE_KEY}_hatching_summaries`, JSON.stringify(unique));
         }
 
         if (Array.isArray(remoteUsers) && remoteUsers.length > 0) {
@@ -1457,15 +1480,42 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   // Farm Profile & Standard Requirements Methods (Live Sync)
-  const updateFarmProfile = (profile: Partial<FarmProfile>) => {
+  const updateFarmProfile = async (profile: Partial<FarmProfile>): Promise<{ success: boolean; message: string; data?: FarmProfile }> => {
+    let nextProfile: FarmProfile = { ...farmProfile, ...profile };
     setFarmProfile(prev => {
       const next = { ...prev, ...profile };
-      saveDocToFirestore('farmProfile', 'profile', next);
-      saveDocToFirestore('farm_config', 'profile', next);
-      saveDocToFirestore('settings', 'global_settings', next);
+      nextProfile = next;
+      try {
+        localStorage.setItem(`${LOCAL_STORAGE_KEY}_profile`, JSON.stringify(next));
+      } catch {}
       return next;
     });
+
+    try {
+      // Direct live persistence to dedicated farm-profile MongoDB endpoint
+      const result = await saveFarmProfileToMongoDB(nextProfile);
+      if (result.success) {
+        logAction('UPDATE_FARM_PROFILE', 'admin', `Directly saved farm profile & overview to central database.`);
+        setMongoStatus(prev => ({ ...prev, lastSyncedAt: new Date().toISOString(), connected: true }));
+        return {
+          success: true,
+          message: 'Farm Profile & Overview saved directly to database!',
+          data: nextProfile,
+        };
+      }
+    } catch (err: any) {
+      console.warn('Direct database sync notice for farm profile:', err);
+    }
+
+    // Fallback direct document save
+    await saveDocToFirestore('farmProfile', 'profile', nextProfile);
+    await saveDocToFirestore('settings', 'global_settings', nextProfile);
     logAction('UPDATE_FARM_PROFILE', 'admin', `Updated farm profile information (${profile.name || 'details'}).`);
+    return {
+      success: true,
+      message: 'Farm profile & overview updated successfully.',
+      data: nextProfile,
+    };
   };
 
   const updateStandardVaccination = (program: StandardMedProgramItem[]) => {
@@ -2512,6 +2562,81 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return deliveries.find(d => d.id === id);
   };
 
+  // Hatching Summary Management
+  const addHatchingSummary = (record: Omit<HatchingSummaryRecord, 'id' | 'createdAt'>): HatchingSummaryRecord => {
+    const id = 'hatch_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+    const eggsSet = Number(record.eggsSet) || 0;
+    const standardChicks = Number(record.standardChicks) || 0;
+    const gradeOut = Number(record.gradeOut) || 0;
+    const totalChicksPulled = standardChicks + gradeOut;
+    const totalHatchPct = eggsSet > 0 ? (totalChicksPulled / eggsSet) * 100 : 0;
+    const saleableHatchPct = eggsSet > 0 ? (standardChicks / eggsSet) * 100 : 0;
+    const gradeOutPct = eggsSet > 0 ? (gradeOut / eggsSet) * 100 : 0;
+
+    const newRecord: HatchingSummaryRecord = {
+      ...record,
+      id,
+      eggsSet,
+      standardChicks,
+      gradeOut,
+      totalChicksPulled,
+      totalHatchPct: Number(totalHatchPct.toFixed(2)),
+      saleableHatchPct: Number(saleableHatchPct.toFixed(2)),
+      gradeOutPct: Number(gradeOutPct.toFixed(2)),
+      createdAt: new Date().toISOString()
+    };
+
+    setHatchingSummaries(prev => [newRecord, ...prev]);
+    saveDocToFirestore('hatchingSummaries', newRecord.id, newRecord);
+    saveDocToMongoDB('hatchingSummaries', newRecord.id, newRecord);
+    logAction('ADD_HATCHING_SUMMARY', 'egg_prod', `Created Hatching Summary for House ${newRecord.houseNumber} (${eggsSet.toLocaleString()} eggs set, ${newRecord.saleableHatchPct}% saleable hatch).`);
+    return newRecord;
+  };
+
+  const updateHatchingSummary = (id: string, updates: Partial<HatchingSummaryRecord>) => {
+    setHatchingSummaries(prev => prev.map(h => {
+      if (h.id === id) {
+        const merged = { ...h, ...updates };
+        const eggsSet = Number(merged.eggsSet) || 0;
+        const standardChicks = Number(merged.standardChicks) || 0;
+        const gradeOut = Number(merged.gradeOut) || 0;
+        const totalChicksPulled = standardChicks + gradeOut;
+        const totalHatchPct = eggsSet > 0 ? (totalChicksPulled / eggsSet) * 100 : 0;
+        const saleableHatchPct = eggsSet > 0 ? (standardChicks / eggsSet) * 100 : 0;
+        const gradeOutPct = eggsSet > 0 ? (gradeOut / eggsSet) * 100 : 0;
+
+        const updated: HatchingSummaryRecord = {
+          ...merged,
+          eggsSet,
+          standardChicks,
+          gradeOut,
+          totalChicksPulled,
+          totalHatchPct: Number(totalHatchPct.toFixed(2)),
+          saleableHatchPct: Number(saleableHatchPct.toFixed(2)),
+          gradeOutPct: Number(gradeOutPct.toFixed(2)),
+          updatedAt: new Date().toISOString()
+        };
+        saveDocToFirestore('hatchingSummaries', id, updated);
+        saveDocToMongoDB('hatchingSummaries', id, updated);
+        logAction('UPDATE_HATCHING_SUMMARY', 'egg_prod', `Updated Hatching Summary for House ${updated.houseNumber}.`);
+        return updated;
+      }
+      return h;
+    }));
+  };
+
+  const deleteHatchingSummary = (id: string) => {
+    const target = hatchingSummaries.find(h => h.id === id);
+    setHatchingSummaries(prev => prev.filter(h => h.id !== id));
+    deleteDocFromFirestore('hatchingSummaries', id);
+    deleteDocFromMongoDB('hatchingSummaries', id);
+    logAction('DELETE_HATCHING_SUMMARY', 'egg_prod', `Deleted Hatching Summary for House ${target?.houseNumber || id} (Setting Date: ${target?.settingDate || 'N/A'}).`);
+  };
+
+  const getHatchingSummaryById = (id: string): HatchingSummaryRecord | undefined => {
+    return hatchingSummaries.find(h => h.id === id);
+  };
+
   // Reset & Backup Data
   const resetAllDataToDefaults = () => {
     setFarmProfile(INITIAL_FARM_PROFILE);
@@ -2527,6 +2652,7 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setRawEggRecords(INITIAL_EGG_PRODUCTION);
     setWeeklyEggWeights(INITIAL_WEEKLY_EGG_WEIGHTS);
     setDeliveries(INITIAL_DELIVERIES);
+    setHatchingSummaries(INITIAL_HATCHING_SUMMARIES);
     setSystemLogs(INITIAL_SYSTEM_LOGS);
     setBiosecurityRequirements(INITIAL_BIOSECURITY_REQUIREMENTS);
     setBiosecurityLogs(INITIAL_BIOSECURITY_LOGS);
@@ -2789,6 +2915,12 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         updateDelivery,
         deleteDelivery,
         getDeliveryById,
+
+        hatchingSummaries,
+        addHatchingSummary,
+        updateHatchingSummary,
+        deleteHatchingSummary,
+        getHatchingSummaryById,
 
         biosecurityRequirements,
         biosecurityLogs,

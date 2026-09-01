@@ -65,6 +65,7 @@ export async function syncAllDataToMongoDB(data: {
   biosecuritySummaries?: any;
   weeklyEggWeights?: any[];
   deliveries?: any[];
+  hatchingSummaries?: any[];
   users: any[];
   auditLogs?: any[];
   systemLogs?: any[];
@@ -164,6 +165,91 @@ export async function saveDocToMongoDB(collectionName: string, id: string | numb
   } catch (e) {
     console.warn(`[MongoDB Sync] Notice saving doc to ${collectionName}:`, e);
     return { success: false };
+  }
+}
+
+/**
+ * Retrieves the live farm profile & overview directly from MongoDB database
+ */
+export async function getFarmProfileFromMongoDB(): Promise<{ success: boolean; data?: any; message?: string }> {
+  try {
+    const res = await fetch('/api/farm-profile', {
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+      },
+    });
+    if (!res.ok) {
+      return { success: false, message: `HTTP ${res.status}` };
+    }
+    const json = await res.json().catch(() => ({}));
+    return {
+      success: Boolean(json.success),
+      data: json.data || null,
+      message: json.message || 'Retrieved farm profile from MongoDB',
+    };
+  } catch (e: any) {
+    console.warn('[MongoDB Sync] Notice fetching farm profile:', e);
+    return { success: false, message: e?.message || 'Failed to fetch farm profile from database' };
+  }
+}
+
+/**
+ * Saves the entire farm profile & overview directly to MongoDB database
+ */
+export async function saveFarmProfileToMongoDB(profileData: any): Promise<{ success: boolean; data?: any; message?: string }> {
+  try {
+    const res = await fetch('/api/farm-profile', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+      },
+      body: JSON.stringify(profileData),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      return { success: false, message: err.message || `HTTP ${res.status}` };
+    }
+    const json = await res.json().catch(() => ({}));
+    return {
+      success: Boolean(json.success),
+      data: json.data || profileData,
+      message: json.message || 'Farm profile saved to MongoDB database',
+    };
+  } catch (e: any) {
+    console.warn('[MongoDB Sync] Notice saving farm profile to DB:', e);
+    return { success: false, message: e?.message || 'Failed to save farm profile to database' };
+  }
+}
+
+/**
+ * Saves specific farm overview specifications directly to MongoDB database
+ */
+export async function saveOverviewToMongoDB(overviewData: any): Promise<{ success: boolean; data?: any; message?: string }> {
+  try {
+    const res = await fetch('/api/farm-profile/overview', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+      },
+      body: JSON.stringify(overviewData),
+    });
+    if (!res.ok) {
+      return { success: false };
+    }
+    const json = await res.json().catch(() => ({}));
+    return {
+      success: Boolean(json.success),
+      data: json.data || overviewData,
+      message: json.message || 'Overview saved to MongoDB database',
+    };
+  } catch (e: any) {
+    console.warn('[MongoDB Sync] Notice saving overview to DB:', e);
+    return { success: false, message: e?.message || 'Failed to save overview to database' };
   }
 }
 

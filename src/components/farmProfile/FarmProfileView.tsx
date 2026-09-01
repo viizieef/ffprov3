@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useFarm } from '../../context/FarmContext';
 import { 
   Building2, 
@@ -31,7 +31,9 @@ import {
   Layers,
   FileText,
   Warehouse,
-  Info
+  Info,
+  Database,
+  RefreshCw
 } from 'lucide-react';
 import { CompanyLogoUploadModal } from './CompanyLogoUploadModal';
 import { 
@@ -75,6 +77,30 @@ export const FarmProfileView: React.FC = () => {
   const [dailyEggCapacity, setDailyEggCapacity] = useState(farmProfile.dailyEggCapacity || '~50,000 Eggs/day');
   const [farmOverviewNotes, setFarmOverviewNotes] = useState(farmProfile.farmOverviewNotes || '');
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+
+  // Sync state when farmProfile is pulled from database or updated externally
+  useEffect(() => {
+    if (!isEditingInfo) {
+      setName(farmProfile.name || '');
+      setAddress(farmProfile.address || '');
+      setContactNumber(farmProfile.contactNumber || '');
+      setEmail(farmProfile.email || '');
+      setEstablishedYear(farmProfile.establishedYear || '');
+      setFarmOwners(farmProfile.farmOwners || '');
+      setPresidentCeo(farmProfile.presidentCeo || '');
+      setCfo(farmProfile.cfo || '');
+      setAnimalHealthSpecialist(farmProfile.animalHealthSpecialist || '');
+      setAnimalProductionSpecialist(farmProfile.animalProductionSpecialist || '');
+      setIndustrySector(farmProfile.industrySector || 'Commercial Broiler-Breeder Parent Stock (PS)');
+      setPrimaryBreeds(farmProfile.primaryBreeds || 'Cobb 500 & Ross 308 Parent Stock');
+      setFacilityHousesCount(farmProfile.facilityHousesCount || '6 Environmentally Controlled (EC)');
+      setTotalBirdCapacity(farmProfile.totalBirdCapacity || '~60,000 Breeders');
+      setDailyEggCapacity(farmProfile.dailyEggCapacity || '~50,000 Eggs/day');
+      setFarmOverviewNotes(farmProfile.farmOverviewNotes || '');
+    }
+  }, [farmProfile, isEditingInfo]);
 
   // Sync state on opening edit form
   const handleOpenEditInfo = () => {
@@ -136,41 +162,70 @@ export const FarmProfileView: React.FC = () => {
   const [newEwProdWeek, setNewEwProdWeek] = useState(1);
   const [newEwGrams, setNewEwGrams] = useState(52.0);
 
-  const handleSaveInfo = (e: React.FormEvent) => {
+  const handleSaveInfo = async (e: React.FormEvent) => {
     e.preventDefault();
-    updateFarmProfile({
-      name,
-      address,
-      contactNumber,
-      email,
-      establishedYear,
-      farmOwners,
-      presidentCeo,
-      cfo,
-      animalHealthSpecialist,
-      animalProductionSpecialist,
-      industrySector,
-      primaryBreeds,
-      facilityHousesCount,
-      totalBirdCapacity,
-      dailyEggCapacity,
-      farmOverviewNotes
-    });
-    setIsEditingInfo(false);
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 2000);
+    setIsSaving(true);
+    try {
+      const res = await updateFarmProfile({
+        name,
+        address,
+        contactNumber,
+        email,
+        establishedYear,
+        farmOwners,
+        presidentCeo,
+        cfo,
+        animalHealthSpecialist,
+        animalProductionSpecialist,
+        industrySector,
+        primaryBreeds,
+        facilityHousesCount,
+        totalBirdCapacity,
+        dailyEggCapacity,
+        farmOverviewNotes
+      });
+      setIsEditingInfo(false);
+      setSaveSuccess(true);
+      setSaveMessage(res?.message || 'Farm Profile & Overview saved to database!');
+      setTimeout(() => {
+        setSaveSuccess(false);
+        setSaveMessage(null);
+      }, 3500);
+    } catch (err: any) {
+      console.error('Error saving farm profile info:', err);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleSaveLogo = (newLogoUrl: string) => {
-    updateFarmProfile({ logoUrl: newLogoUrl });
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 2000);
+  const handleSaveLogo = async (newLogoUrl: string) => {
+    setIsSaving(true);
+    try {
+      await updateFarmProfile({ logoUrl: newLogoUrl });
+      setSaveSuccess(true);
+      setSaveMessage('Company logo saved to database.');
+      setTimeout(() => {
+        setSaveSuccess(false);
+        setSaveMessage(null);
+      }, 3000);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleRemoveLogo = () => {
-    updateFarmProfile({ logoUrl: '' });
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 2000);
+  const handleRemoveLogo = async () => {
+    setIsSaving(true);
+    try {
+      await updateFarmProfile({ logoUrl: '' });
+      setSaveSuccess(true);
+      setSaveMessage('Logo removed and updated.');
+      setTimeout(() => {
+        setSaveSuccess(false);
+        setSaveMessage(null);
+      }, 3000);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleAddVaccine = (e: React.FormEvent) => {
@@ -349,9 +404,13 @@ export const FarmProfileView: React.FC = () => {
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-xl font-bold text-slate-900">{farmProfile.name}</h2>
+              <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                <Database className="w-2.5 h-2.5 text-emerald-600" />
+                MongoDB Live Database
+              </span>
               {saveSuccess && (
-                <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
-                  <Check className="w-3 h-3" /> Saved
+                <span className="text-xs bg-emerald-100 text-emerald-700 px-2.5 py-0.5 rounded-full font-medium flex items-center gap-1 animate-fadeIn">
+                  <Check className="w-3 h-3" /> {saveMessage || 'Saved to Database'}
                 </span>
               )}
             </div>
@@ -367,7 +426,8 @@ export const FarmProfileView: React.FC = () => {
             <button
               id="upload-farm-logo-btn"
               onClick={() => setShowLogoModal(true)}
-              className="px-4 py-2.5 bg-forest-950 hover:bg-forest-900 text-mint-400 rounded-xl text-xs font-semibold flex items-center gap-2 transition shadow-xs border border-forest-800"
+              disabled={isSaving}
+              className="px-4 py-2.5 bg-forest-950 hover:bg-forest-900 text-mint-400 rounded-xl text-xs font-semibold flex items-center gap-2 transition shadow-xs border border-forest-800 disabled:opacity-60 cursor-pointer"
             >
               <Upload className="w-3.5 h-3.5" />
               <span>{farmProfile.logoUrl ? 'Change Company Logo' : 'Upload Company Logo'}</span>
@@ -377,7 +437,8 @@ export const FarmProfileView: React.FC = () => {
               <button
                 id="edit-farm-profile-btn"
                 onClick={handleOpenEditInfo}
-                className="px-4 py-2.5 bg-mint-400 hover:bg-mint-300 text-forest-950 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition shadow-xs cursor-pointer"
+                disabled={isSaving}
+                className="px-4 py-2.5 bg-mint-400 hover:bg-mint-300 text-forest-950 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition shadow-xs cursor-pointer disabled:opacity-60"
               >
                 <Edit3 className="w-3.5 h-3.5" />
                 <span>Edit Profile Info</span>
@@ -661,16 +722,27 @@ export const FarmProfileView: React.FC = () => {
             <button
               type="button"
               onClick={() => setIsEditingInfo(false)}
-              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition cursor-pointer"
+              disabled={isSaving}
+              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition cursor-pointer disabled:opacity-50"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-5 py-2 bg-mint-400 hover:bg-mint-300 text-forest-950 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-xs transition cursor-pointer"
+              disabled={isSaving}
+              className="px-5 py-2 bg-mint-400 hover:bg-mint-300 text-forest-950 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-xs transition cursor-pointer disabled:opacity-60"
             >
-              <Save className="w-3.5 h-3.5" />
-              <span>Save Farm Overview & Profile</span>
+              {isSaving ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <span>Saving to Database...</span>
+                </>
+              ) : (
+                <>
+                  <Save className="w-3.5 h-3.5" />
+                  <span>Save Farm Overview & Profile</span>
+                </>
+              )}
             </button>
           </div>
         </form>

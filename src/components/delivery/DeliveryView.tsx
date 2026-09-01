@@ -21,17 +21,22 @@ import {
   Layers,
   TrendingUp,
   BarChart3,
-  FileText
+  FileText,
+  Egg,
+  Sparkles
 } from 'lucide-react';
 import { DeliveryPrintDocument } from './DeliveryPrintDocument';
 import { DeliveryFormModal } from './DeliveryFormModal';
 import { DeliveryAnalytics } from './DeliveryAnalytics';
+import { HatchingSummaryTab } from './HatchingSummaryTab';
+import { HatchingSummaryFormModal } from './HatchingSummaryFormModal';
 import { exportReportToExcel, ReportMetadata, SheetData } from '../../utils/reportExportUtils';
 import { useToast } from '../common/ToastContainer';
 
 export const DeliveryView: React.FC = () => {
   const { 
     deliveries = [], 
+    hatchingSummaries = [],
     deleteDelivery, 
     currentUser, 
     farmProfile, 
@@ -40,15 +45,17 @@ export const DeliveryView: React.FC = () => {
   const toast = useToast();
 
   const safeDeliveries = Array.isArray(deliveries) ? deliveries : [];
+  const safeHatching = Array.isArray(hatchingSummaries) ? hatchingSummaries : [];
 
-  // Tab State
-  const [activeTab, setActiveTab] = useState<'list' | 'analytics' | 'document'>('list');
+  // Tab State: 'hatching' | 'list' | 'analytics' | 'document'
+  const [activeTab, setActiveTab] = useState<'hatching' | 'list' | 'analytics' | 'document'>('hatching');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('All');
   
   // Modals & Document Viewer
   const [selectedDelivery, setSelectedDelivery] = useState<DeliveryRecord | null>(() => safeDeliveries[0] || null);
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
+  const [isHatchingFormModalOpen, setIsHatchingFormModalOpen] = useState(false);
   const [editingDelivery, setEditingDelivery] = useState<DeliveryRecord | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
@@ -195,13 +202,13 @@ export const DeliveryView: React.FC = () => {
               <span className="text-[10px] font-black uppercase tracking-widest text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
                 Official San Miguel Foods, Inc. Standard
               </span>
-              <span className="text-xs text-slate-400 font-bold">&bull; ESRRR Module</span>
+              <span className="text-xs text-slate-400 font-bold">&bull; Delivery & Hatching Module</span>
             </div>
             <h1 className="text-xl sm:text-2xl font-black text-slate-950 font-display tracking-tight mt-0.5">
-              Egg Delivery & ESRRR Management
+              Egg Delivery & Hatching Management
             </h1>
             <p className="text-xs text-slate-600 max-w-2xl">
-              Egg Sending, Receiving & Regrading Reports (ESRRR), house-by-house dispatch, hatchery intake accounting, cold chain transit, and settability tracking.
+              Hatching Summaries (Setting Date, House, Breed, Eggs Set, Pull-out Date, Standard Chicks, Grade Out, Total Chicks Pulled, Total Hatch %, Saleable Hatch %), ESRRR dispatch accounting, and cold chain transit tracking.
             </p>
           </div>
         </div>
@@ -209,17 +216,16 @@ export const DeliveryView: React.FC = () => {
         {/* Action Buttons */}
         <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
           <button
-            onClick={handleExportAllToExcel}
-            className="flex-1 md:flex-initial inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl transition border border-slate-200 cursor-pointer shadow-2xs"
-            title="Export master delivery table to Excel (.xlsx)"
+            onClick={() => setIsHatchingFormModalOpen(true)}
+            className="flex-1 md:flex-initial inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-slate-950 font-black text-xs rounded-xl transition shadow-md cursor-pointer"
           >
-            <FileSpreadsheet className="w-4 h-4 text-emerald-700" />
-            <span>Export Excel</span>
+            <Plus className="w-4 h-4" />
+            <span>New Hatching Summary</span>
           </button>
 
           <button
             onClick={handleOpenCreateModal}
-            className="flex-1 md:flex-initial inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-slate-950 font-black text-xs rounded-xl transition shadow-md cursor-pointer"
+            className="flex-1 md:flex-initial inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 active:scale-95 text-white font-bold text-xs rounded-xl transition shadow-md cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>New ESRRR Voucher</span>
@@ -228,10 +234,22 @@ export const DeliveryView: React.FC = () => {
       </div>
 
       {/* Navigation Tabs */}
-      <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
+      <div className="flex items-center gap-2 border-b border-slate-200 pb-2 overflow-x-auto">
+        <button
+          onClick={() => setActiveTab('hatching')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer ${
+            activeTab === 'hatching'
+              ? 'bg-slate-900 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          <Egg className="w-4 h-4 text-emerald-400" />
+          <span>Hatching Summary ({safeHatching.length})</span>
+        </button>
+
         <button
           onClick={() => setActiveTab('list')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer ${
             activeTab === 'list'
               ? 'bg-slate-900 text-white shadow-xs'
               : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
@@ -243,7 +261,7 @@ export const DeliveryView: React.FC = () => {
 
         <button
           onClick={() => setActiveTab('analytics')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer ${
             activeTab === 'analytics'
               ? 'bg-slate-900 text-white shadow-xs'
               : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
@@ -256,7 +274,7 @@ export const DeliveryView: React.FC = () => {
         {selectedDelivery && (
           <button
             onClick={() => setActiveTab('document')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer ${
               activeTab === 'document'
                 ? 'bg-slate-900 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
@@ -267,6 +285,11 @@ export const DeliveryView: React.FC = () => {
           </button>
         )}
       </div>
+
+      {/* Tab 0: Hatching Summary Dashboard */}
+      {activeTab === 'hatching' && (
+        <HatchingSummaryTab />
+      )}
 
       {/* Tab 1: Delivery Records Table */}
       {activeTab === 'list' && (
@@ -484,6 +507,12 @@ export const DeliveryView: React.FC = () => {
         onSaved={(saved) => {
           setSelectedDelivery(saved);
         }}
+      />
+
+      {/* Hatching Summary Form Modal (Create / Edit) */}
+      <HatchingSummaryFormModal
+        isOpen={isHatchingFormModalOpen}
+        onClose={() => setIsHatchingFormModalOpen(false)}
       />
 
     </div>
