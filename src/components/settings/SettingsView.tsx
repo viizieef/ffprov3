@@ -35,10 +35,16 @@ import {
   KeyRound,
   ShieldAlert,
   Eye,
-  EyeOff
+  EyeOff,
+  Search,
+  UserPlus,
+  Pencil,
+  Phone,
+  Filter
 } from 'lucide-react';
 import { RoleBadge } from '../common/RoleBadge';
 import { BiosecurityComplianceView } from './BiosecurityComplianceView';
+import { StaffFormModal } from './StaffFormModal';
 import { evaluatePasswordStrength, isAccountLocked } from '../../utils/security';
 
 export const SettingsView: React.FC = () => {
@@ -48,6 +54,8 @@ export const SettingsView: React.FC = () => {
     deleteUser,
     updateUserRole, 
     updateUserStatus, 
+    updateUser,
+    addUser,
     assignUserHouses, 
     auditLogs, 
     currentUser, 
@@ -74,6 +82,15 @@ export const SettingsView: React.FC = () => {
   const [qrCopiedLink, setQrCopiedLink] = useState(false);
   const qrRef = useRef<HTMLDivElement>(null);
   const appOrigin = typeof window !== 'undefined' ? window.location.href.split('#')[0] : 'https://ais-pre-cupjad67n6ntomphx2p2z3-116744961637.asia-east1.run.app';
+
+  // Staff Modal States
+  const [staffModalOpen, setStaffModalOpen] = useState(false);
+  const [editingStaffUser, setEditingStaffUser] = useState<User | null>(null);
+  const [staffSearchQuery, setStaffSearchQuery] = useState('');
+  const [staffRoleFilter, setStaffRoleFilter] = useState('ALL');
+  const [staffStatusFilter, setStaffStatusFilter] = useState('ALL');
+  const [staffHouseFilter, setStaffHouseFilter] = useState('ALL');
+  const [staffToast, setStaffToast] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
 
   // Security & Password States
   const [currentPwd, setCurrentPwd] = useState('');
@@ -175,6 +192,81 @@ export const SettingsView: React.FC = () => {
       setTimeout(() => setSaveSuccess(false), 2000);
     }
   };
+
+  const handleOpenAddStaff = () => {
+    setEditingStaffUser(null);
+    setStaffModalOpen(true);
+  };
+
+  const handleOpenEditStaff = (user: User) => {
+    setEditingStaffUser(user);
+    setStaffModalOpen(true);
+  };
+
+  const handleSaveStaffForm = async (payload: any) => {
+    if (editingStaffUser) {
+      const res = await updateUser(editingStaffUser.id, payload);
+      if (res.success) {
+        setStaffToast({ type: 'ok', text: res.message });
+        setTimeout(() => setStaffToast(null), 3000);
+      }
+      return res;
+    } else {
+      const res = await addUser(payload);
+      if (res.success) {
+        setStaffToast({ type: 'ok', text: res.message });
+        setTimeout(() => setStaffToast(null), 3000);
+      }
+      return res;
+    }
+  };
+
+  // Filtered Staff Roster List
+  const filteredUsers = users.filter(user => {
+    // Search query matches name, username, email, contactNumber, or ID
+    if (staffSearchQuery.trim()) {
+      const q = staffSearchQuery.toLowerCase().trim();
+      const matchName = user.fullName?.toLowerCase().includes(q);
+      const matchUsername = user.username?.toLowerCase().includes(q);
+      const matchEmail = user.email?.toLowerCase().includes(q);
+      const matchPhone = user.contactNumber?.toLowerCase().includes(q);
+      const matchRole = user.role?.toLowerCase().includes(q);
+      if (!matchName && !matchUsername && !matchEmail && !matchPhone && !matchRole) {
+        return false;
+      }
+    }
+
+    // Role filter
+    if (staffRoleFilter !== 'ALL') {
+      if (user.role !== staffRoleFilter) return false;
+    }
+
+    // Status filter
+    if (staffStatusFilter !== 'ALL') {
+      if (staffStatusFilter === 'locked') {
+        if (!isAccountLocked(user).isLocked) return false;
+      } else if (staffStatusFilter === 'active') {
+        if (user.status !== 'active' && user.status !== 'approved') return false;
+      } else if (staffStatusFilter === 'disabled') {
+        if (user.status !== 'disabled' && user.status !== 'rejected') return false;
+      } else if (staffStatusFilter === 'pending') {
+        if (user.status !== 'pending') return false;
+      }
+    }
+
+    // House filter
+    if (staffHouseFilter !== 'ALL') {
+      if (['System Administrator', 'Farm Manager'].includes(user.role)) {
+        // Universal access covers all houses unless specified
+      } else {
+        if (!user.designatedHouses || !user.designatedHouses.includes(staffHouseFilter)) {
+          return false;
+        }
+      }
+    }
+
+    return true;
+  });
 
   const toggleHouseSelection = (houseNum: string) => {
     if (selectedHouses.includes(houseNum)) {
@@ -308,165 +400,368 @@ export const SettingsView: React.FC = () => {
 
       {/* Tab 1: Staff Roster */}
       {activeTab === 'users' && (
-        <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs space-y-4">
-          <div className="flex items-center justify-between">
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs space-y-5">
+          {/* Header with Stats & Actions */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
             <div>
-              <h3 className="text-sm font-bold text-slate-900">Registered Farm Staff Accounts</h3>
-              <p className="text-xs text-slate-500">Manage account access, designations, and roles</p>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-extrabold text-slate-900">Farm Staff & Personnel Roster</h3>
+                <span className="text-xs font-bold text-teal-700 bg-teal-50 border border-teal-200/60 px-2 py-0.5 rounded-full">
+                  {users.length} Total Registered
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Manage staff profiles, designated poultry houses, roles, contact numbers, and security credentials
+              </p>
             </div>
-            {saveSuccess && (
-              <span className="text-xs font-bold text-emerald-700 bg-emerald-100 px-3 py-1 rounded-full flex items-center gap-1">
-                <CheckCircle2 className="w-3.5 h-3.5" /> House Assignment Updated
-              </span>
-            )}
+
+            <div className="flex items-center gap-2">
+              {permissions.canManageUsers && (
+                <button
+                  type="button"
+                  id="add-staff-member-btn"
+                  onClick={handleOpenAddStaff}
+                  className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <UserPlus className="w-4 h-4" />
+                  <span>Add New Staff</span>
+                </button>
+              )}
+            </div>
           </div>
 
-          <div className="overflow-x-auto">
+          {/* Feedback & Notifications */}
+          {staffToast && (
+            <div className={`p-3 text-xs rounded-xl font-bold flex items-center gap-2 animate-fadeIn ${
+              staffToast.type === 'ok' ? 'bg-emerald-50 border border-emerald-200 text-emerald-900' : 'bg-rose-50 border border-rose-200 text-rose-900'
+            }`}>
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>{staffToast.text}</span>
+            </div>
+          )}
+
+          {saveSuccess && (
+            <div className="p-3 text-xs rounded-xl font-bold flex items-center gap-2 bg-teal-50 border border-teal-200 text-teal-900 animate-fadeIn">
+              <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0" />
+              <span>House Assignment successfully updated.</span>
+            </div>
+          )}
+
+          {/* Search and Filters Bar */}
+          <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 bg-slate-50/80 p-3 rounded-2xl border border-slate-200/70">
+            {/* Search Input */}
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={staffSearchQuery}
+                onChange={e => setStaffSearchQuery(e.target.value)}
+                placeholder="Search staff by name, username, email, phone..."
+                className="w-full pl-9 pr-8 py-2 text-xs bg-white border border-slate-200 rounded-xl focus:outline-teal-500 text-slate-800 placeholder:text-slate-400"
+              />
+              {staffSearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setStaffSearchQuery('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Filter Dropdowns */}
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl px-2 py-1">
+                <span className="text-[11px] font-bold text-slate-500">Role:</span>
+                <select
+                  value={staffRoleFilter}
+                  onChange={e => setStaffRoleFilter(e.target.value)}
+                  className="text-xs font-semibold text-slate-800 bg-transparent border-none outline-none cursor-pointer pr-1"
+                >
+                  <option value="ALL">All Roles</option>
+                  <option value="System Administrator">Admin</option>
+                  <option value="Farm Manager">Manager</option>
+                  <option value="Leadman">Leadman</option>
+                  <option value="Flockman">Flockman</option>
+                  <option value="Egg Collector">Egg Collector</option>
+                </select>
+              </div>
+
+              <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl px-2 py-1">
+                <span className="text-[11px] font-bold text-slate-500">Status:</span>
+                <select
+                  value={staffStatusFilter}
+                  onChange={e => setStaffStatusFilter(e.target.value)}
+                  className="text-xs font-semibold text-slate-800 bg-transparent border-none outline-none cursor-pointer pr-1"
+                >
+                  <option value="ALL">All Status</option>
+                  <option value="active">Active Only</option>
+                  <option value="pending">Pending</option>
+                  <option value="disabled">Deactivated</option>
+                  <option value="locked">Locked Accounts</option>
+                </select>
+              </div>
+
+              <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl px-2 py-1">
+                <span className="text-[11px] font-bold text-slate-500">House:</span>
+                <select
+                  value={staffHouseFilter}
+                  onChange={e => setStaffHouseFilter(e.target.value)}
+                  className="text-xs font-semibold text-slate-800 bg-transparent border-none outline-none cursor-pointer pr-1"
+                >
+                  <option value="ALL">All Houses</option>
+                  {flocks.map(f => (
+                    <option key={f.id} value={f.houseNumber}>{f.houseNumber}</option>
+                  ))}
+                </select>
+              </div>
+
+              {(staffSearchQuery || staffRoleFilter !== 'ALL' || staffStatusFilter !== 'ALL' || staffHouseFilter !== 'ALL') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStaffSearchQuery('');
+                    setStaffRoleFilter('ALL');
+                    setStaffStatusFilter('ALL');
+                    setStaffHouseFilter('ALL');
+                  }}
+                  className="px-2.5 py-1.5 text-[11px] font-bold text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition"
+                >
+                  Clear Filters
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Staff Roster Table */}
+          <div className="overflow-x-auto rounded-xl border border-slate-200/80">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200/80">
-                  <th className="py-3 px-3">User & Contact</th>
+                <tr className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200/80">
+                  <th className="py-3 px-3.5">Staff & Contact</th>
                   <th className="py-3 px-3">System Role</th>
-                  <th className="py-3 px-3">Designated House Access</th>
+                  <th className="py-3 px-3">House Assignment</th>
                   <th className="py-3 px-3">Status</th>
-                  <th className="py-3 px-3">Registered Date</th>
-                  {permissions.canManageUsers && <th className="py-3 px-3 text-right">Actions</th>}
+                  <th className="py-3 px-3">Registered / Last Active</th>
+                  {permissions.canManageUsers && <th className="py-3 px-3.5 text-right">Actions</th>}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
-                {activeUsers.map(user => (
-                  <tr key={user.id} className="hover:bg-slate-50 transition">
-                    <td className="py-3 px-3">
-                      <p className="font-bold text-slate-900">{user.fullName}</p>
-                      <p className="text-[11px] text-slate-500">@{user.username} • {user.email}</p>
+              <tbody className="divide-y divide-slate-100 bg-white">
+                {filteredUsers.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="py-8 text-center text-slate-400">
+                      <Users className="w-8 h-8 mx-auto text-slate-300 mb-2" />
+                      <p className="font-semibold text-sm text-slate-600">No staff members match the selected criteria</p>
+                      <p className="text-xs text-slate-400 mt-0.5">Try clearing the search or filters</p>
                     </td>
-                    <td className="py-3 px-3">
-                      {permissions.canManageUsers && user.id !== currentUser?.id ? (
-                        <select
-                          value={user.role}
-                          onChange={e => updateUserRole(user.id, e.target.value as UserRole)}
-                          className="px-2.5 py-1.5 text-xs font-bold border border-slate-200 rounded-xl bg-white focus:outline-teal-500 outline-hidden"
-                        >
-                          <option value="System Administrator">System Administrator</option>
-                          <option value="Farm Manager">Farm Manager</option>
-                          <option value="Leadman">Leadman</option>
-                          <option value="Flockman">Flockman</option>
-                          <option value="Egg Collector">Egg Collector</option>
-                        </select>
-                      ) : (
-                        <RoleBadge role={user.role} />
-                      )}
-                    </td>
-                    <td className="py-3 px-3">
-                      {['Flockman', 'Leadman', 'Egg Collector'].includes(user.role) ? (
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-slate-800">
-                            {user.designatedHouses && user.designatedHouses.length > 0
-                              ? user.designatedHouses.join(', ')
-                              : 'All Houses'}
-                          </span>
-                          {permissions.canManageUsers && (
-                            <button
-                              onClick={() => handleOpenAssignHouses(user)}
-                              className="px-2.5 py-1 text-[10px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition"
-                            >
-                              Assign
-                            </button>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-slate-400 italic">Universal Access</span>
-                      )}
-                    </td>
-                    <td className="py-3 px-3">
-                      <div className="flex flex-col gap-1">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1 w-fit ${
-                          (user.status === 'active' || user.status === 'approved') 
-                            ? 'bg-emerald-100 text-emerald-800' 
-                            : user.status === 'disabled' || user.status === 'rejected'
-                            ? 'bg-rose-100 text-rose-800'
-                            : 'bg-amber-100 text-amber-800'
-                        }`}>
-                          {(user.status === 'active' || user.status === 'approved') ? 'Active' : (user.status === 'disabled' ? 'Deactivated' : user.status)}
-                        </span>
-                        {isAccountLocked(user).isLocked && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-200 text-rose-900 inline-flex items-center gap-1 w-fit">
-                            <ShieldAlert className="w-3 h-3 text-rose-700" />
-                            <span>Locked (Attempts Exceeded)</span>
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="py-3 px-3 text-slate-500">
-                      <p>{user.registeredAt}</p>
-                      {user.passwordChangedAt && (
-                        <p className="text-[10px] text-slate-400">Pwd updated: {new Date(user.passwordChangedAt).toLocaleDateString()}</p>
-                      )}
-                    </td>
-                    {permissions.canManageUsers && (
-                      <td className="py-3 px-3 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          {user.id !== currentUser?.id && (
-                            <>
-                              {/* Lock / Unlock Toggle */}
-                              <button
-                                onClick={async () => {
-                                  const locked = isAccountLocked(user).isLocked;
-                                  await adminToggleUserLock(user.id, !locked);
-                                }}
-                                className={`px-2 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 ${
-                                  isAccountLocked(user).isLocked
-                                    ? 'bg-emerald-100 text-emerald-900 hover:bg-emerald-200'
-                                    : 'bg-amber-50 text-amber-800 hover:bg-amber-100'
-                                }`}
-                                title={isAccountLocked(user).isLocked ? 'Unlock User Account' : 'Lock User Account'}
-                              >
-                                {isAccountLocked(user).isLocked ? <Unlock className="w-3 h-3 text-emerald-700" /> : <Lock className="w-3 h-3 text-amber-700" />}
-                                <span>{isAccountLocked(user).isLocked ? 'Unlock' : 'Lock'}</span>
-                              </button>
-
-                              {/* Admin Reset Password */}
-                              <button
-                                onClick={() => {
-                                  setAdminResetModalUser(user);
-                                  setAdminNewPwd('');
-                                  setAdminResetMsg(null);
-                                }}
-                                className="px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 transition flex items-center gap-1"
-                                title="Reset User Password"
-                              >
-                                <KeyRound className="w-3 h-3 text-slate-600" />
-                                <span>Reset Pwd</span>
-                              </button>
-
-                              <button
-                                onClick={() => updateUserStatus(user.id, (user.status === 'active' || user.status === 'approved') ? 'disabled' : 'active')}
-                                className={`px-2 py-1 rounded-lg text-[10px] font-bold transition ${
-                                  (user.status === 'active' || user.status === 'approved')
-                                    ? 'bg-rose-50 text-rose-700 hover:bg-rose-100'
-                                    : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                                }`}
-                              >
-                                {(user.status === 'active' || user.status === 'approved') ? 'Deactivate' : 'Activate'}
-                              </button>
-                              <button
-                                onClick={() => {
-                                  if (window.confirm(`Are you sure you want to delete user ${user.fullName} (@${user.username})?`)) {
-                                    deleteUser(user.id);
-                                  }
-                                }}
-                                className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
-                                title="Delete User"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </td>
-                    )}
                   </tr>
-                ))}
+                ) : (
+                  filteredUsers.map(user => {
+                    const locked = isAccountLocked(user).isLocked;
+                    return (
+                      <tr key={user.id} className="hover:bg-slate-50/80 transition">
+                        {/* User & Contact */}
+                        <td className="py-3 px-3.5">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-teal-100 border border-teal-200 text-teal-800 flex items-center justify-center font-bold text-xs shrink-0">
+                              {user.fullName ? user.fullName.charAt(0).toUpperCase() : 'U'}
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <p className="font-bold text-slate-900">{user.fullName}</p>
+                                {user.id === currentUser?.id && (
+                                  <span className="text-[10px] font-extrabold bg-teal-100 text-teal-800 px-1.5 py-0.2 rounded-sm">You</span>
+                                )}
+                              </div>
+                              <p className="text-[11px] text-slate-500">
+                                @{user.username} • {user.email}
+                              </p>
+                              {user.contactNumber && (
+                                <p className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
+                                  <Phone className="w-2.5 h-2.5 text-slate-400" />
+                                  <span>{user.contactNumber}</span>
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* System Role */}
+                        <td className="py-3 px-3">
+                          {permissions.canManageUsers && user.id !== currentUser?.id ? (
+                            <select
+                              value={user.role}
+                              onChange={e => updateUserRole(user.id, e.target.value as UserRole)}
+                              className="px-2 py-1 text-xs font-bold border border-slate-200 rounded-xl bg-white hover:border-slate-300 focus:outline-teal-500 cursor-pointer shadow-2xs"
+                            >
+                              <option value="System Administrator">System Administrator</option>
+                              <option value="Farm Manager">Farm Manager</option>
+                              <option value="Leadman">Leadman</option>
+                              <option value="Flockman">Flockman</option>
+                              <option value="Egg Collector">Egg Collector</option>
+                            </select>
+                          ) : (
+                            <RoleBadge role={user.role} />
+                          )}
+                        </td>
+
+                        {/* House Access */}
+                        <td className="py-3 px-3">
+                          {['Flockman', 'Leadman', 'Egg Collector'].includes(user.role) ? (
+                            <div className="flex items-center gap-2">
+                              <div className="flex flex-wrap gap-1">
+                                {user.designatedHouses && user.designatedHouses.length > 0 ? (
+                                  user.designatedHouses.map(h => (
+                                    <span key={h} className="px-1.5 py-0.5 text-[10px] font-bold bg-teal-50 text-teal-800 border border-teal-200/70 rounded-md">
+                                      {h}
+                                    </span>
+                                  ))
+                                ) : (
+                                  <span className="text-[11px] font-semibold text-slate-500 italic">All Houses</span>
+                                )}
+                              </div>
+                              {permissions.canManageUsers && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenAssignHouses(user)}
+                                  className="px-2 py-0.5 text-[10px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md transition shrink-0"
+                                  title="Quick Assign Houses"
+                                >
+                                  Assign
+                                </button>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 italic text-[11px] flex items-center gap-1">
+                              <Globe className="w-3 h-3 text-slate-400" />
+                              <span>Universal Access</span>
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Status */}
+                        <td className="py-3 px-3">
+                          <div className="flex flex-col gap-1">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1 w-fit ${
+                              (user.status === 'active' || user.status === 'approved') 
+                                ? 'bg-emerald-100 text-emerald-800' 
+                                : user.status === 'disabled' || user.status === 'rejected'
+                                ? 'bg-rose-100 text-rose-800'
+                                : 'bg-amber-100 text-amber-800'
+                            }`}>
+                              {(user.status === 'active' || user.status === 'approved') ? 'Active' : (user.status === 'disabled' ? 'Deactivated' : user.status)}
+                            </span>
+                            {locked && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-200 text-rose-900 inline-flex items-center gap-1 w-fit">
+                                <ShieldAlert className="w-3 h-3 text-rose-700" />
+                                <span>Locked</span>
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* Registered / Last Login */}
+                        <td className="py-3 px-3 text-slate-500">
+                          <p className="text-[11px]">{user.registeredAt}</p>
+                          {user.lastLogin ? (
+                            <p className="text-[10px] text-teal-600 font-medium">
+                              Login: {new Date(user.lastLogin).toLocaleDateString()}
+                            </p>
+                          ) : (
+                            user.passwordChangedAt && (
+                              <p className="text-[10px] text-slate-400">
+                                Pwd updated: {new Date(user.passwordChangedAt).toLocaleDateString()}
+                              </p>
+                            )
+                          )}
+                        </td>
+
+                        {/* Actions */}
+                        {permissions.canManageUsers && (
+                          <td className="py-3 px-3.5 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              {/* Edit Profile Button */}
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditStaff(user)}
+                                className="px-2 py-1 rounded-lg text-[10px] font-bold bg-teal-50 text-teal-800 hover:bg-teal-100 border border-teal-200/60 transition flex items-center gap-1 cursor-pointer"
+                                title="Edit Staff Profile & Details"
+                              >
+                                <Pencil className="w-3 h-3 text-teal-700" />
+                                <span>Edit</span>
+                              </button>
+
+                              {user.id !== currentUser?.id && (
+                                <>
+                                  {/* Lock / Unlock Toggle */}
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      await adminToggleUserLock(user.id, !locked);
+                                    }}
+                                    className={`px-2 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 cursor-pointer ${
+                                      locked
+                                        ? 'bg-emerald-100 text-emerald-900 hover:bg-emerald-200'
+                                        : 'bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200/60'
+                                    }`}
+                                    title={locked ? 'Unlock User Account' : 'Lock User Account'}
+                                  >
+                                    {locked ? <Unlock className="w-3 h-3 text-emerald-700" /> : <Lock className="w-3 h-3 text-amber-700" />}
+                                    <span>{locked ? 'Unlock' : 'Lock'}</span>
+                                  </button>
+
+                                  {/* Admin Reset Password */}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setAdminResetModalUser(user);
+                                      setAdminNewPwd('');
+                                      setAdminResetMsg(null);
+                                    }}
+                                    className="px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 transition flex items-center gap-1 cursor-pointer"
+                                    title="Quick Reset Password"
+                                  >
+                                    <KeyRound className="w-3 h-3 text-slate-600" />
+                                    <span>Pwd</span>
+                                  </button>
+
+                                  {/* Deactivate / Activate */}
+                                  <button
+                                    type="button"
+                                    onClick={() => updateUserStatus(user.id, (user.status === 'active' || user.status === 'approved') ? 'disabled' : 'active')}
+                                    className={`px-2 py-1 rounded-lg text-[10px] font-bold transition cursor-pointer ${
+                                      (user.status === 'active' || user.status === 'approved')
+                                        ? 'bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200/50'
+                                        : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200/50'
+                                    }`}
+                                    title={(user.status === 'active' || user.status === 'approved') ? 'Deactivate Account' : 'Activate Account'}
+                                  >
+                                    {(user.status === 'active' || user.status === 'approved') ? 'Deact.' : 'Act.'}
+                                  </button>
+
+                                  {/* Delete Staff */}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (window.confirm(`Are you sure you want to delete user ${user.fullName} (@${user.username})?`)) {
+                                        deleteUser(user.id);
+                                      }
+                                    }}
+                                    className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                                    title="Delete User"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>
@@ -766,14 +1061,14 @@ export const SettingsView: React.FC = () => {
             <div className="p-5 bg-slate-50 border border-slate-200/80 rounded-2xl space-y-3">
               <h4 className="font-bold text-sm text-slate-900 flex items-center gap-2">
                 <Database className="w-4 h-4 text-forest-700" />
-                <span>Central Cloud Database & Real-Time Sync</span>
+                <span>MongoDB Cloud Database Connection</span>
               </h4>
               <p className="text-xs text-slate-600">
                 FarmFlow Pro connects directly to your central MongoDB database with instant data persistence, backup exports, and zero data loss.
               </p>
               <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-mint-100 text-forest-900 rounded-xl text-xs font-bold">
                 <CheckCircle2 className="w-4 h-4 text-forest-700" />
-                <span>MongoDB Active & Synchronized</span>
+                <span>MongoDB Connected & Active</span>
               </div>
             </div>
 
@@ -786,7 +1081,7 @@ export const SettingsView: React.FC = () => {
                     <span>Cross-Platform Standalone App Installation</span>
                   </div>
                   <p className="text-xs text-slate-300 leading-relaxed max-w-xl">
-                    Install FarmFlow Pro directly onto your mobile phone, tablet, or desktop computer. Installed apps launch in full-screen standalone mode with real-time central database synchronization.
+                    Install FarmFlow Pro directly onto your mobile phone, tablet, or desktop computer. Installed apps launch in full-screen standalone mode with direct MongoDB database access.
                   </p>
                 </div>
               </div>
@@ -824,22 +1119,22 @@ export const SettingsView: React.FC = () => {
               </div>
             </div>
 
-            {/* MongoDB Central Cloud Database - Automated Background Sync */}
+            {/* MongoDB Central Cloud Database - Direct Connection */}
             <div className="p-5 bg-gradient-to-br from-emerald-50 via-teal-50 to-emerald-50 border border-emerald-300 rounded-3xl space-y-4 shadow-xs">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <div className="flex items-center gap-2">
                     <h4 className="font-bold text-sm text-slate-900 flex items-center gap-2">
                       <Database className="w-4 h-4 text-emerald-700" />
-                      <span>Central Cloud Database</span>
+                      <span>MongoDB Central Database</span>
                     </h4>
                     <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-900 font-extrabold text-[10px] uppercase tracking-wider flex items-center gap-1">
                       <CheckCircle2 className="w-3 h-3 text-emerald-700" />
-                      Background Syncing
+                      Direct Connected
                     </span>
                   </div>
                   <p className="text-xs text-slate-600 mt-1 max-w-xl">
-                    High-throughput, reliable document synchronization for farm logs, egg batches, feed stocks, biosecurity verifications, and user accounts. Syncs automatically in the background across all devices.
+                    Direct MongoDB database storage for farm records, egg harvests, feed stocks, biosecurity verifications, and staff accounts. All operations connect directly to MongoDB.
                   </p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
@@ -852,10 +1147,10 @@ export const SettingsView: React.FC = () => {
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
                 <div className="p-3 bg-white/80 backdrop-blur-xs rounded-2xl border border-emerald-200 space-y-1">
-                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Sync Mode</span>
+                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Connection Mode</span>
                   <div className="flex items-center gap-2 text-xs font-extrabold text-slate-900">
                     <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                    <span>Automatic Background</span>
+                    <span>Direct MongoDB</span>
                   </div>
                 </div>
                 <div className="p-3 bg-white/80 backdrop-blur-xs rounded-2xl border border-emerald-200 space-y-1">
@@ -865,9 +1160,10 @@ export const SettingsView: React.FC = () => {
                   </div>
                 </div>
                 <div className="p-3 bg-white/80 backdrop-blur-xs rounded-2xl border border-emerald-200 space-y-1">
-                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Background Telemetry</span>
-                  <div className="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
-                    <span>{mongoStatus.lastSyncedAt ? new Date(mongoStatus.lastSyncedAt).toLocaleTimeString() : 'Active & Synced'}</span>
+                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Database Status</span>
+                  <div className="text-xs font-extrabold text-emerald-800 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                    <span>Active & Connected</span>
                   </div>
                 </div>
               </div>
@@ -1045,7 +1341,7 @@ export const SettingsView: React.FC = () => {
                 </div>
                 <h4 className="font-extrabold text-sm text-slate-900">Android OS (Chrome / Edge)</h4>
                 <p className="text-xs text-slate-600 leading-relaxed">
-                  Direct 1-tap installation to home screen with native app icon, live real-time sync, and haptic feedback on keypad touches.
+                  Direct 1-tap installation to home screen with native app icon, direct MongoDB database access, and haptic feedback on keypad touches.
                 </p>
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-xs space-y-1 text-slate-700 font-medium">
                   <div className="flex items-center gap-1.5 text-emerald-800 font-bold text-[11px]">
@@ -1331,6 +1627,19 @@ export const SettingsView: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Modal: Add or Edit Staff Member Profile */}
+      <StaffFormModal
+        isOpen={staffModalOpen}
+        onClose={() => {
+          setStaffModalOpen(false);
+          setEditingStaffUser(null);
+        }}
+        onSave={handleSaveStaffForm}
+        userToEdit={editingStaffUser}
+        existingUsers={users}
+        flocks={flocks}
+      />
     </div>
   );
 };

@@ -89,13 +89,13 @@ export async function syncAllDataToMongoDB(data: {
     const result = await res.json();
     return {
       success: result.success,
-      message: result.message || 'Successfully synced all records to MongoDB.',
+      message: result.message || 'Successfully saved all records to MongoDB.',
       counts: result.counts,
     };
   } catch (err: any) {
     return {
       success: false,
-      message: err?.message || 'Error syncing data to MongoDB.',
+      message: err?.message || 'Error saving data to MongoDB.',
     };
   }
 }
@@ -127,7 +127,7 @@ export async function pullAllDataFromMongoDB(): Promise<{
     const result = await res.json();
     return {
       success: result.success,
-      message: result.message || 'Successfully pulled records from MongoDB.',
+      message: result.message || 'Successfully loaded records from MongoDB.',
       data: result.data || {},
       farmProfile: result.farmProfile || null,
       settings: result.settings || null,
@@ -136,7 +136,7 @@ export async function pullAllDataFromMongoDB(): Promise<{
   } catch (err: any) {
     return {
       success: false,
-      message: err?.message || 'Error fetching records from MongoDB.',
+      message: err?.message || 'Error loading records from MongoDB.',
     };
   }
 }
@@ -163,7 +163,7 @@ export async function saveDocToMongoDB(collectionName: string, id: string | numb
     const json = await res.json().catch(() => ({}));
     return { success: true, data: json.data || json.doc || data };
   } catch (e) {
-    console.warn(`[MongoDB Sync] Notice saving doc to ${collectionName}:`, e);
+    console.warn(`[MongoDB Direct] Notice saving doc to ${collectionName}:`, e);
     return { success: false };
   }
 }
@@ -189,7 +189,7 @@ export async function getFarmProfileFromMongoDB(): Promise<{ success: boolean; d
       message: json.message || 'Retrieved farm profile from MongoDB',
     };
   } catch (e: any) {
-    console.warn('[MongoDB Sync] Notice fetching farm profile:', e);
+    console.warn('[MongoDB Direct] Notice fetching farm profile:', e);
     return { success: false, message: e?.message || 'Failed to fetch farm profile from database' };
   }
 }
@@ -219,7 +219,7 @@ export async function saveFarmProfileToMongoDB(profileData: any): Promise<{ succ
       message: json.message || 'Farm profile saved to MongoDB database',
     };
   } catch (e: any) {
-    console.warn('[MongoDB Sync] Notice saving farm profile to DB:', e);
+    console.warn('[MongoDB Direct] Notice saving farm profile to DB:', e);
     return { success: false, message: e?.message || 'Failed to save farm profile to database' };
   }
 }
@@ -248,7 +248,7 @@ export async function saveOverviewToMongoDB(overviewData: any): Promise<{ succes
       message: json.message || 'Overview saved to MongoDB database',
     };
   } catch (e: any) {
-    console.warn('[MongoDB Sync] Notice saving overview to DB:', e);
+    console.warn('[MongoDB Direct] Notice saving overview to DB:', e);
     return { success: false, message: e?.message || 'Failed to save overview to database' };
   }
 }
@@ -270,7 +270,7 @@ export async function getDocFromMongoDB(collectionName: string, id: string | num
     const json = await res.json().catch(() => ({}));
     return json.data || null;
   } catch (e) {
-    console.warn(`[MongoDB Sync] Notice fetching doc from ${collectionName}:`, e);
+    console.warn(`[MongoDB Direct] Notice fetching doc from ${collectionName}:`, e);
     return null;
   }
 }
@@ -291,7 +291,7 @@ export async function deleteDocFromMongoDB(collectionName: string, id: string | 
     });
     return res.ok;
   } catch (e) {
-    console.warn(`[MongoDB Sync] Notice deleting doc from ${collectionName}:`, e);
+    console.warn(`[MongoDB Direct] Notice deleting doc from ${collectionName}:`, e);
     return false;
   }
 }

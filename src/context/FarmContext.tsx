@@ -174,6 +174,8 @@ interface FarmContextType {
   rejectUser: (userId: string) => void;
   updateUserRole: (userId: string, newRole: UserRole, houses?: string[]) => void;
   updateUserStatus: (userId: string, newStatus: UserStatus) => void;
+  updateUser: (userId: string, updates: Partial<UserAccount> & { newPassword?: string }) => Promise<{ success: boolean; message: string; user?: UserAccount }>;
+  addUser: (userData: Omit<UserAccount, 'id' | 'createdAt' | 'status'> & { password?: string; status?: UserStatus }) => Promise<{ success: boolean; message: string; user?: UserAccount }>;
   assignUserHouses: (userId: string, houses: string[]) => void;
   deleteUser: (userId: string) => void;
   switchUser: (userId: string) => void;
@@ -675,13 +677,13 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           lastSyncedAt: new Date().toISOString(),
           connected: true,
         }));
-        logAction('MONGODB_SYNC', 'system', 'Successfully synchronized all collections, profile, standards, and audit logs to MongoDB database.');
+        logAction('MONGODB_SAVE', 'system', 'Successfully saved all collections, profile, standards, and audit logs to MongoDB database.');
       }
       return res;
     } catch (e: any) {
       return {
         success: false,
-        message: e?.message || 'Error syncing data to MongoDB.',
+        message: e?.message || 'Error saving data to MongoDB.',
       };
     } finally {
       setMongoStatus(prev => ({ ...prev, isSyncing: false }));
@@ -901,11 +903,11 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           lastSyncedAt: new Date().toISOString(),
           connected: true,
         }));
-        logAction('MONGODB_PULL', 'system', 'Hydrated latest farm data, profile, standards, and logs from central database.');
+        logAction('MONGODB_PULL', 'system', 'Loaded latest farm data, profile, standards, and logs from MongoDB database.');
       }
-      return { success: true, message: 'Hydrated latest farm records, standards, and audit logs from MongoDB.' };
+      return { success: true, message: 'Loaded latest farm records, standards, and audit logs from MongoDB.' };
     } catch (e: any) {
-      return { success: false, message: e?.message || 'Error pulling data from MongoDB.' };
+      return { success: false, message: e?.message || 'Error loading data from MongoDB.' };
     } finally {
       setMongoStatus(prev => ({ ...prev, isSyncing: false }));
     }
@@ -1041,6 +1043,28 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
     }
 
+    // If not found in local memory, attempt a fast targeted lookup for this user from server (with 2s timeout)
+    if (!user && typeof navigator !== 'undefined' && navigator.onLine) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2000);
+        const res = await fetch(`/api/mongodb/doc/users/${encodeURIComponent(clean)}`, {
+          signal: controller.signal,
+          headers: { 'Cache-Control': 'no-cache' }
+        });
+        clearTimeout(timeoutId);
+        if (res.ok) {
+          const docData = await res.json();
+          if (docData && docData.data && docData.data.username) {
+            user = docData.data;
+            setUsers(prev => deduplicateUsers([user!, ...prev]));
+          }
+        }
+      } catch {
+        // Fallback continues
+      }
+    }
+
     if (!user) {
       return { success: false, message: 'User account not found. Please verify your username or registered email.' };
     }
@@ -1132,9 +1156,22 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
 
     setCurrentUser(updated);
+    try {
+      localStorage.setItem('broiler_breeder_active_user', JSON.stringify(updated));
+    } catch {
+      // LocalStorage fallback
+    }
     setUsers(prev => prev.map(u => u.id === user.id ? updated : u));
     syncUserToBackend(updated);
     logAction('USER_LOGIN', 'auth', `User ${user.fullName} logged in successfully as [${user.role}].`);
+
+    // Non-blocking async background hydration so dashboard is immediately ready without delays
+    if (typeof navigator !== 'undefined' && navigator.onLine) {
+      setTimeout(() => {
+        pullAllFromMongoDB().catch(() => {});
+      }, 50);
+    }
+
     return { success: true, message: `Welcome back, ${user.fullName}!`, user: updated };
   };
 
@@ -1432,6 +1469,117 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       syncUserToBackend(updatedUser);
       logAction('UPDATE_USER_STATUS', 'admin', `Updated status to ${newStatus} for user ID ${userId}.`);
     }
+  };
+
+  const updateUser = async (
+    userId: string, 
+    updates: Partial<UserAccount> & { newPassword?: string }
+  ): Promise<{ success: boolean; message: string; user?: UserAccount }> => {
+    const existing = users.find(u => u.id === userId);
+    if (!existing) {
+      return { success: false, message: 'Staff profile not found.' };
+    }
+
+    // Check username collision if changed
+    if (updates.username && updates.username.toLowerCase().trim() !== existing.username.toLowerCase().trim()) {
+      const conflict = users.some(u => u.id !== userId && u.username.toLowerCase().trim() === updates.username!.toLowerCase().trim());
+      if (conflict) {
+        return { success: false, message: `Username "@${updates.username}" is already taken.` };
+      }
+    }
+
+    // Check email collision if changed
+    if (updates.email && updates.email.trim() && updates.email.toLowerCase().trim() !== (existing.email || '').toLowerCase().trim()) {
+      const conflict = users.some(u => u.id !== userId && u.email && u.email.toLowerCase().trim() === updates.email!.toLowerCase().trim());
+      if (conflict) {
+        return { success: false, message: `Email "${updates.email}" is already registered to another staff.` };
+      }
+    }
+
+    let updatedUser: UserAccount = {
+      ...existing,
+      ...updates,
+      username: updates.username !== undefined ? updates.username.trim() : existing.username,
+      fullName: updates.fullName !== undefined ? updates.fullName.trim() : existing.fullName,
+      email: updates.email !== undefined ? updates.email.trim() : existing.email,
+      contactNumber: updates.contactNumber !== undefined ? updates.contactNumber.trim() : existing.contactNumber,
+      role: updates.role || existing.role,
+      status: updates.status || existing.status,
+      designatedHouses: updates.designatedHouses !== undefined ? updates.designatedHouses : existing.designatedHouses
+    };
+
+    // If new password is provided
+    if (updates.newPassword && updates.newPassword.trim().length > 0) {
+      if (updates.newPassword.length < 8) {
+        return { success: false, message: 'Password must be at least 8 characters long.' };
+      }
+      const salt = generateSalt();
+      const hash = await hashPasswordWithSalt(updates.newPassword, salt);
+      updatedUser.passwordHash = hash;
+      updatedUser.passwordSalt = salt;
+      updatedUser.passwordChangedAt = new Date().toISOString();
+      updatedUser.failedLoginAttempts = 0;
+      updatedUser.lockedUntil = null;
+    }
+
+    // If security answer is updated
+    if (updates.securityAnswer && updates.securityAnswer.trim().length > 0) {
+      const aSalt = generateSalt();
+      const aHash = await hashSecurityAnswer(updates.securityAnswer.trim(), aSalt);
+      updatedUser.securityAnswerHash = aHash;
+      updatedUser.securityAnswerSalt = aSalt;
+      updatedUser.securityAnswer = updates.securityAnswer.trim();
+    }
+
+    setUsers(prev => prev.map(u => u.id === userId ? updatedUser : u));
+
+    // If updating currently logged in user
+    if (currentUser?.id === userId) {
+      setCurrentUser(updatedUser);
+      try {
+        localStorage.setItem('broiler_breeder_active_user', JSON.stringify(updatedUser));
+      } catch {
+        // storage fallback
+      }
+    }
+
+    syncUserToBackend(updatedUser);
+    logAction('STAFF_PROFILE_UPDATED', 'admin', `Updated staff profile for ${updatedUser.fullName} (@${updatedUser.username}) [${updatedUser.role}].`);
+
+    return { 
+      success: true, 
+      message: `Staff profile for ${updatedUser.fullName} has been updated successfully.`,
+      user: updatedUser 
+    };
+  };
+
+  const addUser = async (
+    userData: Omit<UserAccount, 'id' | 'createdAt' | 'status'> & { password?: string; status?: UserStatus }
+  ): Promise<{ success: boolean; message: string; user?: UserAccount }> => {
+    const rawPassword = userData.password || 'Farm@2026!';
+    const desiredStatus = userData.status || 'active';
+
+    const res = await registerUser(
+      {
+        ...userData,
+        password: rawPassword,
+      },
+      desiredStatus === 'active'
+    );
+
+    if (!res.success) {
+      return res;
+    }
+
+    // Ensure status is explicitly set to desiredStatus
+    if (res.user && res.user.status !== desiredStatus) {
+      const updatedUser = { ...res.user, status: desiredStatus };
+      setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
+      syncUserToBackend(updatedUser);
+      return { success: true, message: `Staff account for ${updatedUser.fullName} created successfully.`, user: updatedUser };
+    }
+
+    return res;
   };
 
   const assignUserHouses = (userId: string, houses: string[]) => {
@@ -2851,6 +2999,8 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         rejectUser,
         updateUserRole,
         updateUserStatus,
+        updateUser,
+        addUser,
         assignUserHouses,
         deleteUser,
         switchUser,

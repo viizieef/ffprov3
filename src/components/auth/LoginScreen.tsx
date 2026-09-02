@@ -105,14 +105,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     setSuccessMessage(null);
     setLockoutInfo({ isLocked: false, remainingMinutes: 0 });
     setIsLoading(true);
-
-    try {
-      if (typeof navigator !== 'undefined' && navigator.onLine) {
-        await pullAllFromMongoDB();
-      }
-    } catch {
-      // Direct pull attempt completed
-    }
+    triggerHaptic('light');
 
     try {
       const res = await login(username.trim(), password);
@@ -123,6 +116,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           setLockoutInfo({ isLocked: true, remainingMinutes: res.remainingMinutes || 15 });
         }
       } else {
+        triggerHaptic('medium');
         setSuccessMessage(`Authenticated successfully. Loading ${res.user?.fullName || 'dashboard'}...`);
       }
     } catch (err: any) {
@@ -442,6 +436,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     id="login-username-input"
                     type="text"
                     required
+                    inputMode="text"
+                    enterKeyHint="next"
                     autoCapitalize="none"
                     autoCorrect="off"
                     spellCheck={false}
@@ -464,7 +460,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     <button
                       type="button"
                       onClick={onForgotPasswordClick}
-                      className="text-xs text-forest-700 hover:text-forest-900 font-semibold hover:underline cursor-pointer"
+                      className="text-xs text-forest-700 hover:text-forest-900 font-semibold hover:underline cursor-pointer py-1"
                     >
                       Forgot Password?
                     </button>
@@ -478,6 +474,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     id="login-password-input"
                     type={showPassword ? 'text' : 'password'}
                     required
+                    enterKeyHint="go"
                     autoCapitalize="none"
                     autoCorrect="off"
                     spellCheck={false}
@@ -490,7 +487,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-700 transition cursor-pointer"
+                    className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-700 transition cursor-pointer p-2"
                     aria-label={showPassword ? 'Hide password' : 'Show password'}
                   >
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}

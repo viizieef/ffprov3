@@ -292,7 +292,7 @@ export const CrossPlatformModal: React.FC<CrossPlatformModalProps> = ({
                       <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-forest-900" />
                     </h4>
                     <p className="text-[11px] text-slate-500 mt-0.5">
-                      Safari Add to Home Screen, Safe Area Insets, Instant Cloud Sync.
+                      Safari Add to Home Screen, Safe Area Insets, Direct MongoDB Cloud Storage.
                     </p>
                   </div>
                 </div>
@@ -327,9 +327,9 @@ export const CrossPlatformModal: React.FC<CrossPlatformModalProps> = ({
                   <div className="p-2.5 bg-white rounded-xl border border-slate-200">
                     <p className="font-bold text-slate-900 flex items-center gap-1.5">
                       <Database className="w-3.5 h-3.5 text-forest-700" />
-                      <span>Central Cloud DB</span>
+                      <span>MongoDB Cloud DB</span>
                     </p>
-                    <p className="text-[10px] text-emerald-700 font-semibold mt-0.5">✓ Live Synchronized</p>
+                    <p className="text-[10px] text-emerald-700 font-semibold mt-0.5">✓ Direct Connected</p>
                   </div>
 
                   <div className="p-2.5 bg-white rounded-xl border border-slate-200">
@@ -396,7 +396,7 @@ export const CrossPlatformModal: React.FC<CrossPlatformModalProps> = ({
                 <div>
                   <h4 className="font-bold text-emerald-950 text-sm">Android Installation & Native APK Experience</h4>
                   <p className="text-slate-700 text-xs mt-1">
-                    Installs directly to your Android home screen and app drawer as an independent app icon with standalone full-screen view, live central synchronization, and hardware haptics.
+                    Installs directly to your Android home screen and app drawer as an independent app icon with standalone full-screen view, direct MongoDB cloud database access, and hardware haptics.
                   </p>
                 </div>
               </div>

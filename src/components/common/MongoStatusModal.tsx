@@ -44,12 +44,12 @@ export const MongoStatusModal: React.FC<MongoStatusModalProps> = ({ isOpen, onCl
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="font-extrabold text-slate-900 text-base">Central Database Sync</h3>
+                <h3 className="font-extrabold text-slate-900 text-base">MongoDB Database Connection</h3>
                 <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-extrabold rounded-md uppercase tracking-wider">
-                  Live Connected
+                  Direct Connected
                 </span>
               </div>
-              <p className="text-xs text-slate-500">Continuous automatic synchronization across all workstations and mobile devices</p>
+              <p className="text-xs text-slate-500">Direct real-time connection to MongoDB cluster across all workstations and mobile devices</p>
             </div>
           </div>
           <button
@@ -71,11 +71,11 @@ export const MongoStatusModal: React.FC<MongoStatusModalProps> = ({ isOpen, onCl
                   <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
                 </span>
                 <span className="text-xs font-extrabold text-slate-900">
-                  {isConnected ? 'Database Live Connected' : 'Central Database Active'}
+                  {isConnected ? 'MongoDB Connected & Active' : 'MongoDB Database Active'}
                 </span>
                 <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-900 font-bold text-[10px] flex items-center gap-1">
                   <Check className="w-3 h-3 text-emerald-700" />
-                  Auto-Synchronized
+                  Direct Connection
                 </span>
               </div>
               <div className="flex items-center gap-2">
@@ -97,8 +97,8 @@ export const MongoStatusModal: React.FC<MongoStatusModalProps> = ({ isOpen, onCl
               <div className="flex items-center gap-2 p-2.5 bg-white/80 rounded-xl border border-emerald-100">
                 <Activity className="w-4 h-4 text-emerald-700 shrink-0" />
                 <div>
-                  <span className="text-[10px] text-slate-500 block font-medium">Sync Status</span>
-                  <span className="font-bold text-emerald-800">Live & Synchronized</span>
+                  <span className="text-[10px] text-slate-500 block font-medium">Connection Status</span>
+                  <span className="font-bold text-emerald-800">Connected & Live</span>
                 </div>
               </div>
             </div>
@@ -106,10 +106,10 @@ export const MongoStatusModal: React.FC<MongoStatusModalProps> = ({ isOpen, onCl
             <div className="p-3 bg-white/90 rounded-xl border border-emerald-200/80 text-[11px] text-slate-600 leading-relaxed space-y-1">
               <div className="flex items-center gap-1.5 font-bold text-slate-800">
                 <Zap className="w-3.5 h-3.5 text-amber-500" />
-                <span>Automatic Database Persistence</span>
+                <span>Direct Database Persistence</span>
               </div>
               <p>
-                All data is completely viewable, editable, and saved in real time to the central database. Changes made on any device are automatically synchronized to the cluster.
+                All data is completely connected, viewable, and saved directly in real time to MongoDB. Changes made from any account or device are immediately stored in the database.
               </p>
             </div>
           </div>
@@ -119,11 +119,11 @@ export const MongoStatusModal: React.FC<MongoStatusModalProps> = ({ isOpen, onCl
             <div className="flex items-center justify-between text-xs font-bold text-slate-600">
               <span className="flex items-center gap-1.5">
                 <Database className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Synchronized Records</span>
+                <span>MongoDB Database Records</span>
               </span>
               <span className="text-[11px] text-emerald-700 font-bold flex items-center gap-1">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                <span>All Live in Central Database</span>
+                <span>Connected to MongoDB</span>
               </span>
             </div>
 
@@ -154,15 +154,15 @@ export const MongoStatusModal: React.FC<MongoStatusModalProps> = ({ isOpen, onCl
               <span>Universal Real-Time Access</span>
             </div>
             <p className="text-[11px] text-slate-600 leading-relaxed">
-              Every staff member can log in from any phone or browser. All changes save and sync seamlessly without needing manual refresh or sync buttons.
+              Every staff member connects directly to the same centralized MongoDB database from any phone, tablet, or workstation. All records save instantly to MongoDB.
             </p>
           </div>
 
-          {/* Background Sync Info Footer */}
+          {/* MongoDB Connection Info Footer */}
           <div className="p-3 bg-emerald-50/70 border border-emerald-200/80 rounded-2xl flex items-center justify-between gap-3 text-xs">
             <div className="flex items-center gap-2 text-emerald-950 font-medium">
               <ShieldCheck className="w-4 h-4 text-emerald-700 shrink-0" />
-              <span>Multi-device sync: <strong className="text-emerald-900">Active & Continuous</strong></span>
+              <span>MongoDB Central Database: <strong className="text-emerald-900">Directly Connected</strong></span>
             </div>
             <button
               type="button"
@@ -177,7 +177,7 @@ export const MongoStatusModal: React.FC<MongoStatusModalProps> = ({ isOpen, onCl
         {/* Footer */}
         <div className="px-6 py-3.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
           <span>Target DB: {dbName}</span>
-          <span>Status: {isConnected ? 'Online & Synchronized' : 'Local Standby'}</span>
+          <span>Status: {isConnected ? 'Connected & Live' : 'Connecting to MongoDB...'}</span>
         </div>
       </div>
     </div>

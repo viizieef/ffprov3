@@ -116,6 +116,12 @@ export const LoginModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSwitch
               <input
                 type="text"
                 required
+                inputMode="text"
+                enterKeyHint="next"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                autoComplete="username"
                 value={username}
                 onChange={e => setUsername(e.target.value)}
                 placeholder="Enter your username"
@@ -142,6 +148,11 @@ export const LoginModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSwitch
               <input
                 type={showPassword ? 'text' : 'password'}
                 required
+                enterKeyHint="go"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                autoComplete="current-password"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 placeholder="••••••••"
